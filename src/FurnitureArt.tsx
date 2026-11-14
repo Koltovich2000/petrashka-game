@@ -1,0 +1,4 @@
+import type {FurnitureId} from './activities';
+export function FurnitureArt({kind}:{kind:FurnitureId}){return <svg viewBox="0 0 64 40" shapeRendering="crispEdges" aria-hidden="true" className="furniture-art">
+ {kind==='yoga'?<><path d="M15 9H57L48 33H4Z" fill="#30233c"/><path d="M16 7H58L49 30H5Z" fill="#9b73d7" stroke="#33254d" strokeWidth="2"/><path d="M18 11H51M14 19H49M11 25H45" stroke="#d4b1ed" strokeWidth="2"/><path d="M14 6H58V12H14Z" fill="#c29de7"/></>:kind==='dumbbells'?<><path d="m9 14 43 9-2 6L7 20Z" fill="#a8b5ce"/><path d="M5 9H13V26H5ZM15 12H21V29H15ZM45 14H51V31H45ZM53 17H61V34H53Z" fill="#556385" stroke="#242337" strokeWidth="2"/><path d="M6 11H11M54 19H59" stroke="#cedbeb" strokeWidth="2"/></>:<><path d="M6 12H58L61 32H3Z" fill="#9b8cba" stroke="#30223f" strokeWidth="2"/><path d="M9 15H55L56 25H8Z" fill="#dbc6a3"/><path d="M13 18h4m9 3h5m10-4h4m3 6h3" stroke="#9c8159" strokeWidth="2"/><path d="M4 27H60V34H4Z" fill="#756b99"/></>}
+ </svg>;}
