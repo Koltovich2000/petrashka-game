@@ -18,14 +18,14 @@ type Motion={x:number;y:number;vx:number;vy:number;tilt:number;phase:Phase;elaps
 const resting=():Motion=>({x:0,y:0,vx:0,vy:0,tilt:0,phase:'idle',elapsed:0,direction:1});
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
 interface Props {
- foodTray?:ReactNode;
+ foodTray?:ReactNode; locationKey:string;
  game:Game;onActivity:(kind:ActivityKind)=>void;onMove:(id:FurnitureId,x:number,y:number)=>void;
  active:boolean; hygiene:number; onWake:()=>void; outfit:Outfit; onRestart:()=>void; state:string; status:string; speech:string;
  effect:string; gain:string; particles:string[]; sleeping:boolean; day:number;
  onBusy:(busy:boolean)=>void; careMode:CareMode|null; onCare:(action:Action)=>void; canSleep:boolean; canPet:boolean;
 }
 export function Room(p:Props){
- const [location,setLocation]=useState(()=>{try{const saved=localStorage.getItem('petrashka:location');return locations.some(l=>l.id===saved)?saved!:'room';}catch{return 'room';}});
+ const [location,setLocation]=useState(()=>{try{const saved=localStorage.getItem(p.locationKey);return locations.some(l=>l.id===saved)?saved!:'room';}catch{return 'room';}});
  const stage=useRef<HTMLElement>(null);const actor=useRef<HTMLDivElement>(null);const m=useRef(resting());const [motion,setMotion]=useState(resting);
  const [muted,setMuted]=useState(isSoundMuted);const [hitCount,setHitCount]=useState(0);
  const [deathChoice,setDeathChoice]=useState<'restart'|'potion'|null>(null);
@@ -114,7 +114,7 @@ export function Room(p:Props){
  const activityOffset=(stage.current?.clientWidth??0)*(activityX-.5);
  const busy=motion.phase!=='idle';const phaseText={idle:actionKind?activities[actionKind].name+'…':p.speech,dragging:'А-а-а! Осторожнее! 😳',falling:'Ой, падаю!',landed:'Упс… Я в порядке!', 'getting-up':'Сейчас, сейчас… встаю!',walking:'Топ-топ… обратно в центр',reacting:reactions[hit].text}[motion.phase];
  useEffect(()=>{if(p.careMode==='wash')select('bathroom');if(p.careMode==='sleep')select('room');},[p.careMode]);
- function select(id:string,force=false){if(!force&&p.game.roomAction)return;reset();setLocation(id);try{localStorage.setItem('petrashka:location',id);}catch{/* The location is cosmetic; gameplay remains available. */}}
+ function select(id:string,force=false){if(!force&&p.game.roomAction)return;reset();setLocation(id);try{localStorage.setItem(p.locationKey,id);}catch{/* The location is cosmetic; gameplay remains available. */}}
  return <><section ref={stage} className={'room photo-room '+(p.sleeping?'night':'')+(p.foodTray?' feeding':'')+(bathPhase?' bath-phase-'+bathPhase:'')+(toiletPhase?' toilet-phase-'+toiletPhase:'')} aria-label="Комната Петрашки" data-location={location}>
  <RoomObjects game={p.game} location={location as Location} onActivity={p.onActivity} onSleep={()=>p.onCare('sleep')} onWake={p.onWake} onMove={p.onMove}/>
  <div className="location-photo pixel-location" role="img" aria-label={locations.find(l=>l.id===location)!.label}/>

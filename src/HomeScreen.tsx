@@ -30,11 +30,11 @@ const tutorialTexts=[
 
 interface Props {
  onActivity:(kind:ActivityKind)=>void;onMove:(id:FurnitureId,x:number,y:number)=>void;
- active:boolean; game:Game; outfit:Outfit; effect:string; gain:string;
+ locationKey:string; active:boolean; game:Game; outfit:Outfit; effect:string; gain:string;
  motionBusy:boolean; interact:(action:Action,food?:FoodId)=>void; setMotionBusy:(busy:boolean)=>void; restart:()=>void; onWake:()=>void; onWork:()=>void;
 }
 
-export function HomeScreen({active,game,outfit,effect,gain,motionBusy,interact,setMotionBusy,restart,onWake,onWork,onActivity,onMove}:Props){
+export function HomeScreen({locationKey,active,game,outfit,effect,gain,motionBusy,interact,setMotionBusy,restart,onWake,onWork,onActivity,onMove}:Props){
  const [mode,setMode]=useState<CareMode|null>(null);
  const [actionPage,setActionPage]=useState(0);
  const page=actionPage;
@@ -66,7 +66,7 @@ export function HomeScreen({active,game,outfit,effect,gain,motionBusy,interact,s
    <PixelIcon kind={stat.key}/><div><span>{stat.label}</span><strong>{Math.floor(game[stat.key])}%</strong></div>
    <progress aria-label={stat.label} value={game[stat.key]} max={100} style={{accentColor:stat.color}}/>
   </div>)}</section>
-  <Room foodTray={mode==='feed'&&!blocked(game,'feed')?<FoodTray game={game} onFeed={feedAtMouth}/>:null} game={game} onActivity={onActivity} onMove={onMove} hygiene={game.hygiene} onWake={onWake} active={active} outfit={outfit} state={state} status={labels[state]} speech={game.tutorial===0?'Ну всё, я в Москве. Денег ноль. И жрать хочется. Надо что-то придумать.':game.tutorial===2?'О, 250 рублей! Правда, я уже задолбался. Надо поесть.':hygieneMessage(game.hygiene)||labels[state]} effect={effect} gain={gain} particles={particles} sleeping={sleeping} day={gameDay(game)} onBusy={setMotionBusy} onRestart={restart} careMode={mode} onCare={execute} canSleep={!blocked(game,'sleep')} canPet={!blocked(game,'pet')}/>
+  <Room locationKey={locationKey} foodTray={mode==='feed'&&!blocked(game,'feed')?<FoodTray game={game} onFeed={feedAtMouth}/>:null} game={game} onActivity={onActivity} onMove={onMove} hygiene={game.hygiene} onWake={onWake} active={active} outfit={outfit} state={state} status={labels[state]} speech={game.tutorial===0?'Ну всё, я в Москве. Денег ноль. И жрать хочется. Надо что-то придумать.':game.tutorial===2?'О, 250 рублей! Правда, я уже задолбался. Надо поесть.':hygieneMessage(game.hygiene)||labels[state]} effect={effect} gain={gain} particles={particles} sleeping={sleeping} day={gameDay(game)} onBusy={setMotionBusy} onRestart={restart} careMode={mode} onCare={execute} canSleep={!blocked(game,'sleep')} canPet={!blocked(game,'pet')}/>
   <section className="quick-care" aria-label="Действия">
    {hint&&<p className="care-hint" role="status">{hint}</p>}
    <div className="quick-actions">

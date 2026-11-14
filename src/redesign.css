@@ -1,6 +1,6 @@
 .modern{
  --panel:#252947;--muted:#b5bddb;--stroke:#53577e;--gold:#ffd36f;
- --nav-height:calc(78px + max(env(safe-area-inset-bottom),var(--tg-content-safe-area-inset-bottom,0px),var(--tg-safe-area-inset-bottom,0px)));
+ --nav-height:calc(78px + var(--app-safe-bottom));
  grid-template-rows:auto minmax(0,1fr) var(--nav-height);
  font-family:system-ui,sans-serif;color:#f7f4f8;
  background:radial-gradient(ellipse at 50% 32%,#222e5a,#13182f 64%,#0d1227);
@@ -20,7 +20,7 @@
 .game-icon,.modern .pixel-icon{width:26px;height:26px;display:block;flex:none}
 .player-bar{
  z-index:20;display:flex;align-items:center;gap:10px;width:100%;max-width:920px;margin:0 auto;
- padding:calc(8px + max(env(safe-area-inset-top),var(--tg-content-safe-area-inset-top,0px))) 12px 9px;
+ padding:calc(8px + var(--app-safe-top)) max(12px,var(--app-safe-right)) 9px max(12px,var(--app-safe-left));
  background:linear-gradient(145deg,#252b47,#191f39);border:1.5px solid #454e78;border-top:0;
  border-radius:0 0 23px 23px;box-shadow:0 5px 14px #080c20a0;
 }
@@ -38,7 +38,7 @@
 .player-help{width:31px;height:32px;flex:none;padding:0;font-weight:800}
 .wallet-gain{position:absolute;z-index:4;right:0;top:100%;padding:5px 8px;background:#272238;border-radius:8px;color:#ffda79;animation:wallet-rise 2.6s both}
 @keyframes wallet-rise{0%{opacity:0;transform:translateY(10px)}15%,80%{opacity:1}100%{opacity:0;transform:translateY(-8px)}}
-.modern .game-page{padding:12px max(12px,calc((100% - 860px)/2)) 12px;}
+.modern .game-page{padding:12px max(12px,var(--app-safe-right),calc((100% - 860px)/2)) 12px max(12px,var(--app-safe-left),calc((100% - 860px)/2));}
 .modern .game-page:not([hidden]){animation:page-in .19s ease-out}
 @keyframes page-in{from{opacity:.7}to{opacity:1}}
 .modern .bottom-nav{border:0;background:#11162b;padding-top:5px}
@@ -114,7 +114,7 @@
 .job-sheet[open]{animation:sheet-in .2s ease-out}
 .job-sheet::backdrop{background:#090d21a5}
 @keyframes sheet-in{from{transform:translateY(30px);opacity:.5}to{transform:none;opacity:1}}
-.job-sheet-content{position:relative;padding:14px 16px calc(16px + env(safe-area-inset-bottom))}
+.job-sheet-content{position:relative;padding:14px 16px calc(16px + var(--app-safe-bottom))}
 .job-sheet-content h2{margin:8px 0 4px;font-size:25px}.job-sheet-content p{margin:6px 0;color:#d5d7e8;font-size:14px}
 .modern button.sheet-close:not(.mascot):not(.mini-stats button){position:absolute;right:22px;top:20px;width:35px;height:35px}
 .job-banner{display:grid;place-items:center;min-height:82px;border-radius:16px;background:linear-gradient(155deg,#6271a4,#e69b74 65%,#6c495b);font-size:53px}
@@ -123,7 +123,7 @@
 .job-sheet .shift-durations{margin:10px 0}.job-sheet .shift-durations button{padding:5px}
 @media(min-width:730px){.job-sheet{inset:0 16px 0 auto;margin:auto 0;border-radius:23px;width:370px;height:max-content}.modern .home-layout .photo-room{min-height:375px}}
 @media(max-width:520px){
- .modern .game-page{padding:8px 8px 10px}
+ .modern .game-page{padding:8px max(8px,var(--app-safe-right)) 10px max(8px,var(--app-safe-left))}
  .stat-card{grid-template-columns:1fr;justify-items:center;gap:2px;padding:5px 2px;text-align:center}
  .stat-card .pixel-icon{width:20px;height:20px}.stat-card span{font-size:8px}.stat-card strong{font-size:14px}.stat-card progress{height:5px}
  .modern .clothes-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
