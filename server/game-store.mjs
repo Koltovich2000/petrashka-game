@@ -38,6 +38,10 @@ function alreadyApplied(action,row,audit){
 function playerQueries(query,change,close,fold='LOWER'){
  return {
   change,close,
+  async savedPlayerCount(){
+   const [row]=await query("SELECT COUNT(*) AS total FROM petrashka_players WHERE state<>''",[]);
+   return Number(row.total);
+  },
   async rememberProfile(id,displayName,at){
    await query(`INSERT INTO petrashka_players(id,state,display_name,last_seen_at) VALUES(?,'',?,?)
     ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,

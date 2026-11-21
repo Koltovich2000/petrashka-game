@@ -90,6 +90,7 @@ export function createAppServer({
   if (req.method === 'HEAD') return res.end();
   createReadStream(file).on('error',()=>res.destroy()).pipe(res);
  });
+ server.once('listening',()=>{void game.logStorage();});
  server.on('close',() => {gifts.close();game.close();});
  return server;
 }

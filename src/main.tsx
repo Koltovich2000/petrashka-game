@@ -170,7 +170,7 @@ function App({profile}: {profile?:TelegramProfile}){
  }
  if(!ready)return <main className="app"><p role="status">{error||'Загружаем твоё сохранение…'}</p>{error&&<button onClick={()=>void send({kind:'sync'})}>Повторить</button>}</main>;
  const dashboard=profile?.isAdmin&&<Suspense fallback={null}><AdminDashboard token={profile.gameToken}/></Suspense>;
- if(!game.introCompleted)return <><Intro onFinish={finishIntro} storageError={Boolean(error)}/>{dashboard&&<div className="modern admin-entry">{dashboard}</div>}</>;
+ if(!game.introCompleted)return <><Intro index={game.introScene??0} onNext={()=>void send({kind:'introNext',scene:game.introScene??0})} onFinish={finishIntro} error={error}/>{dashboard&&<div className="modern admin-entry">{dashboard}</div>}</>;
  if(game.hospital)return <><HospitalScreen game={game} hospital={game.hospital} error={error} onNotice={hospitalNotice}/>{dashboard&&<div className="modern admin-entry">{dashboard}</div>}</>;
  return <div className={`game-shell modern${activityBusy?' activity-busy':''}`} onClickCapture={noticeOnClick}>
  {activityBusy&&activityNotice&&<div key={activityNotice.id} className="activity-notice" role="status"

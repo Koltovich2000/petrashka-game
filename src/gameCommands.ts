@@ -1,7 +1,7 @@
 import {activityReason,buyFurniture,furnitureCatalog,activities,isLocation,moveFurniture,returnBall,scrubBath,startActivity,type ActivityKind,type FurnitureId,type Location} from './activities';
 import {FOOD,type FoodId} from './balance';
 import {applyClothing} from './economy';
-import {act,adoptDog,advance,beginTutorial,cancelActivity,feed,recordFloorMess,wake,type Action,type Game} from './game';
+import {act,adoptDog,advance,beginTutorial,LAST_INTRO_SCENE,cancelActivity,feed,recordFloorMess,wake,type Action,type Game} from './game';
 import {acknowledgeHospital,dischargeHospital} from './hospital';
 import {availableBeds,businessKeys,buyBed,collectBusiness,openBusiness,type BedUpgrade,type Business} from './property';
 import {categoryKeys,type Category} from './wardrobe';
@@ -10,6 +10,7 @@ export type {AdminValues} from './adminTypes';
 
 export type GameCommand=
  {kind:'sync'|'intro'|'cancel'|'wake'|'adopt'}
+ |{kind:'introNext';scene:number}
  |{kind:'care';action:Action;food?:FoodId}
  |{kind:'activity';activity:ActivityKind;dogMessAt?:number}
  |{kind:'wash'|'ball';id:string}
@@ -28,7 +29,11 @@ export function runGameCommand(game:Game,command:GameCommand,now:number,location
 
 function applyCommand(game:Game,command:GameCommand,location:Location,admin:boolean):Game{
  if(!command||!isLocation(location))return game;
- if(!game.introCompleted)return command.kind==='intro'?{...beginTutorial(game.updated),economy:game.economy}:game;
+ if(!game.introCompleted){
+  const scene=game.introScene??0;
+  if(command.kind==='introNext'&&command.scene===scene&&scene<LAST_INTRO_SCENE)return {...game,introScene:scene+1};
+  return command.kind==='intro'?{...beginTutorial(game.updated),economy:game.economy}:game;
+ }
  if(game.hospital){
   if(command.kind==='notice')return acknowledgeHospital(game,command.notice);
   if(command.kind==='discharge')return dischargeHospital(game,command.notice);

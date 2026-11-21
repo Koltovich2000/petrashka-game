@@ -36,9 +36,19 @@ function conflict(code){return Object.assign(new Error(code),{status:409,code});
 export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_PATH||resolve('data/game.sqlite'),
  databaseUrl=process.env.GAME_DATABASE_URL||process.env.GIFTS_DATABASE_URL,clock=Date.now}){
  let database;
+ let loggedFirstSave=false;
  const getStore=()=>database??=openGameStore(databasePath,databaseUrl).catch(error=>{database=undefined;throw error;});
  const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
  return {
+  async logStorage(){
+   const source=databaseUrl?'PostgreSQL':`SQLite ${resolve(databasePath)}`;
+   try{
+    const store=await getStore();
+    console.info(`Game storage: ${source}; saved players: ${await store.savedPlayerCount()}`);
+   }catch(error){
+    console.error(`Game storage unavailable: ${source}`,error.code??error.name);
+   }
+  },
   async rememberProfile(profile){
    await (await getStore()).rememberProfile(profile.id,profile.displayName,clock());
   },
@@ -110,6 +120,10 @@ export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_
      const events=[...history(previous,settled,at),...history(settled,state,at)];
      return {state,events,details:action?{kind:'edit',changes:changes(fieldsOf(settled),fieldsOf(state))}:undefined};
     },{activeAt:at,action});
+    if(!loggedFirstSave){
+     loggedFirstSave=true;
+     console.info('Game progress saved: first successful player write since startup');
+    }
     return json(res,200,{state});
    }catch(error){console.error('Game state transaction failed',error);return json(res,503,{error:'game_state_unavailable'});}
   },

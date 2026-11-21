@@ -154,3 +154,40 @@ test('admin directory upgrades existing profiles and applies only authorized, id
  const afterIntro=await request('/api/game',newcomer.data.user.gameToken,{location:'room',command:{kind:'intro'}});
  assert.equal(afterIntro.data.state.economy.balance,1000);
 });
+
+test('reopening the server keeps intro scenes, tutorial progress and money for the same Telegram ID',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'petrashka-restart-'));
+ const databasePath=join(directory,'game.sqlite');
+ const botToken='restart-test-token';
+ const options={botToken,admins:new Set(),databasePath,databaseUrl:''};
+ let api=createGameApi(options);
+ t.after(async()=>{await api.close();await rm(directory,{recursive:true,force:true});});
+ async function restart(){
+  await api.close();
+  api=createGameApi(options);
+  await api.rememberProfile({id:'123',displayName:'Test'});
+ }
+ async function command(command){
+  const req=Readable.from([Buffer.from(JSON.stringify({location:'room',command}))]);
+  req.method='POST';
+  req.headers={'content-type':'application/json',authorization:'Bearer '+issueGameSession('123',botToken)};
+  let status,reply;
+  await api.handle(req,{writeHead(code){status=code;},end(raw){reply=JSON.parse(raw);}});
+  assert.equal(status,200);
+  return reply.state;
+ }
+ await command({kind:'introNext',scene:0});
+ await restart();
+ assert.equal((await command({kind:'sync'})).introScene,1);
+ assert.equal((await command({kind:'introNext',scene:0})).introScene,1);
+ await command({kind:'introNext',scene:1});
+ await command({kind:'introNext',scene:2});
+ await command({kind:'intro'});
+ const before=await command({kind:'care',action:'feed',food:'free'});
+ assert.ok(before.tutorial>0);
+ await restart();
+ const restored=await command({kind:'sync'});
+ assert.equal(restored.introCompleted,true);
+ assert.equal(restored.tutorial,before.tutorial);
+ assert.deepEqual(restored.economy,before.economy);
+});

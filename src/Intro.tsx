@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useRef} from 'react';
 import {PixelAvatar} from './PixelAvatar';
 import {defaultOutfit} from './wardrobe';
 
@@ -22,8 +22,7 @@ const scenes = [
 
 const sceneCount=scenes.length+1;
 
-export function Intro({onFinish,storageError}:{onFinish:()=>void;storageError:boolean}) {
-  const [index,setIndex]=useState(0);
+export function Intro({index,onNext,onFinish,error}:{index:number;onNext:()=>void;onFinish:()=>void;error:string}) {
   const heading=useRef<HTMLHeadingElement>(null);
   const scene=scenes[index];
 
@@ -37,9 +36,9 @@ export function Intro({onFinish,storageError}:{onFinish:()=>void;storageError:bo
     <h1 className="intro-sr-only" ref={heading} tabIndex={-1}>Переезд в Москву. Сцена {index+1} из {sceneCount}</h1>
     <div className="intro-slide">
       <img src={`/assets/intro/${scene.image}.png`} width={941} height={1672} alt={scene.description} draggable={false}/>
-      <button className="intro-image-next" style={{top:scene.buttonTop}} onClick={()=>setIndex(index+1)} aria-label="Далее"/>
+      <button className="intro-image-next" style={{top:scene.buttonTop}} onClick={onNext} aria-label="Далее"/>
     </div>
-    {storageError&&<p role="alert">Не удалось сохранить прогресс на устройстве.</p>}
+    {error&&<p role="alert">{error}</p>}
   </main>;
 
   return <main className="app intro">
@@ -56,6 +55,6 @@ export function Intro({onFinish,storageError}:{onFinish:()=>void;storageError:bo
       <p>Баланс: <strong>0 ₽</strong></p>
     </section>
     <button className="open-wardrobe intro-next" onClick={onFinish}>Начать жизнь в Москве</button>
-    {storageError&&<p role="alert">Не удалось сохранить прогресс на устройстве.</p>}
+    {error&&<p role="alert">{error}</p>}
   </main>;
 }

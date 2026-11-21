@@ -8,7 +8,8 @@ import {newEconomy,parseEconomy,type Economy} from './economy';
 import {BALANCE,FOOD,TUTORIAL,tutorialRewards,legacyXP,type FoodId} from './balance';
 export type Stat='health'|'food'|'mood'|'energy'|'hygiene';
 export type Action='feed'|'pet'|'sleep'|'heal'|'wash'|'play';
-export type Game=Record<Stat,number>&{hospital:Hospital|null;medicalDebt:number;protectedUntil:number;hairWashedAt:number|null;furnitureCosts:Partial<Record<keyof Furniture,number>>;bedPurchasePrice:number|null;dog:boolean;dogCare:DogCare|null;roomAction:RoomAction|null;floorMess:Partial<Record<Location,true>>;accidentActive:boolean;bed:keyof typeof beds;businesses:Businesses;furniture:Furniture;fitnessXP:number;training:{day:string;count:number};toiletBonusAt:number;version:4;economy:Economy;closet:Closet|null;introCompleted:boolean;rentPaid:boolean;cooldowns:Record<Action,number>;updated:number;born:number;sleepUntil:number|null;restUntil:number|null;baseClock:number;exhaustionClock:number;freeFoodAt:number;tutorial:number;cares:number;petStrokes:number};
+export const LAST_INTRO_SCENE=3;
+export type Game=Record<Stat,number>&{introScene?:number;hospital:Hospital|null;medicalDebt:number;protectedUntil:number;hairWashedAt:number|null;furnitureCosts:Partial<Record<keyof Furniture,number>>;bedPurchasePrice:number|null;dog:boolean;dogCare:DogCare|null;roomAction:RoomAction|null;floorMess:Partial<Record<Location,true>>;accidentActive:boolean;bed:keyof typeof beds;businesses:Businesses;furniture:Furniture;fitnessXP:number;training:{day:string;count:number};toiletBonusAt:number;version:4;economy:Economy;closet:Closet|null;introCompleted:boolean;rentPaid:boolean;cooldowns:Record<Action,number>;updated:number;born:number;sleepUntil:number|null;restUntil:number|null;baseClock:number;exhaustionClock:number;freeFoodAt:number;tutorial:number;cares:number;petStrokes:number};
 export const KEY='petrashka:v1';
 export const fresh=(now=Date.now()):Game=>({hospital:null,medicalDebt:0,protectedUntil:0,hairWashedAt:null,furnitureCosts:{},bedPurchasePrice:null,dog:false,dogCare:null,roomAction:null,floorMess:{},accidentActive:false,bed:'standard',businesses:{},furniture:{},fitnessXP:0,training:{day:'',count:0},toiletBonusAt:0,version:4,economy:{...newEconomy(),balance:0},closet:null,introCompleted:true,rentPaid:true,cooldowns:{feed:0,pet:0,sleep:0,heal:0,wash:0,play:0},health:100,food:100,mood:100,energy:100,hygiene:100,updated:now,born:now,sleepUntil:null,restUntil:null,baseClock:0,exhaustionClock:0,freeFoodAt:0,tutorial:TUTORIAL.done,cares:0,petStrokes:0});
 export const beginIntro=(now=Date.now()):Game=>({...fresh(now),introCompleted:false,rentPaid:false,tutorial:0});
@@ -139,6 +140,7 @@ export function parseSave(raw:string|null,now=Date.now()):Game{
   const base=fresh(now);
   const s={...base,...data,version:4,economy:parseEconomy(data.economy),closet:parseCloset(data.closet,data.version<4)} as Game;
   if(old){s.tutorial=TUTORIAL.done;s.baseClock=0;s.exhaustionClock=0;s.freeFoodAt=0;s.restUntil=null;s.economy.xp=legacyXP(s.economy.xp);if(data.version===1){s.hygiene=100;s.cooldowns=base.cooldowns;}if(s.sleepUntil!==null)s.sleepUntil=-1;}
+  if(!s.introCompleted)s.introScene=Number.isInteger(data.introScene)&&data.introScene>=0&&data.introScene<=LAST_INTRO_SCENE?data.introScene:0;
   s.dog=data.dog===true;
   s.furniture=parseFurniture(data.furniture);
   s.furnitureCosts={};
