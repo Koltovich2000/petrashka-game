@@ -1,10 +1,11 @@
 import {useEffect,useRef,useState} from 'react';
 import {GameIcon} from './GameIcon';
 import {giftPaymentAvailable,giftPaymentRequest,onTelegramLifecycle,openGiftInvoice} from './telegram';
+import {maxGiftWishLength} from './giftWish';
 import './gifts.css';
 
 type GiftItem = {id:string; name:string; icon:string; price:number; currency:'XTR'};
-type Gift = GiftItem & {sender:string; receivedAt:number};
+type Gift = GiftItem & {sender:string; receivedAt:number; wish?:string; priceRank?:number|null};
 type GiftPage = {gifts:Gift[]; page:number; pages:number; total:number};
 type Catalog = {catalog:GiftItem[]; paymentsEnabled:boolean};
 type Modal = {kind:'details'; gift:Gift} | {kind:'catalog'} | {kind:'confirm'; gift:GiftItem};
@@ -27,6 +28,7 @@ export function GiftsScreen({active}:{active:boolean}) {
  const [catalog,setCatalog] = useState<Catalog|null>(null);
  const [catalogError,setCatalogError] = useState(false);
  const [anonymous,setAnonymous] = useState(false);
+ const [wish,setWish] = useState('');
  const [paying,setPaying] = useState(false);
  const paymentInProgress = useRef(false);
  const [notice,setNotice] = useState('');
@@ -87,6 +89,7 @@ export function GiftsScreen({active}:{active:boolean}) {
  async function openCatalog() {
   setModal({kind:'catalog'});
   setAnonymous(false);
+  setWish('');
   setNotice('');
   setCatalogError(false);
   catalogRequest.current?.abort();
@@ -111,7 +114,7 @@ export function GiftsScreen({active}:{active:boolean}) {
   setPaying(true);
   setNotice('');
   try {
-   const {id,url} = await giftPaymentRequest<{id:string;url:string}>('/api/gifts/invoice',{giftId:gift.id,anonymous});
+   const {id,url} = await giftPaymentRequest<{id:string;url:string}>('/api/gifts/invoice',{giftId:gift.id,anonymous,wish:wish.trim()});
    const status = await openGiftInvoice(url);
    if (status === 'cancelled' || status === 'failed') {
     setNotice(status === 'cancelled' ? 'Оплата отменена.' : 'Оплата не прошла. Попробуйте ещё раз.');
@@ -151,7 +154,8 @@ export function GiftsScreen({active}:{active:boolean}) {
    <div className="gifts-shelves">
     {Array.from({length:pageSize},(_,index) => {
      const gift = wall?.gifts[index];
-     const rank = (wall?.page ?? 1) === 1 && index < 3 ? ['gold','silver','bronze'][index] : undefined;
+     const place = gift?.priceRank===undefined&&(wall?.page??1)===1 ? index+1 : gift?.priceRank;
+     const rank = place ? ['gold','silver','bronze'][place-1] : undefined;
      return <div className="gifts-slot" key={gift?.id ?? 'empty-' + index}>
       {gift && <button type="button" className="gifts-tile" data-rank={rank} onClick={() => setModal({kind:'details',gift})}>
        <GameIcon name={gift.icon}/>
@@ -186,6 +190,10 @@ export function GiftsScreen({active}:{active:boolean}) {
       <div><dt>Стоимость</dt><dd><Stars price={modal.gift.price}/></dd></div>
       <div><dt>Получен</dt><dd><time dateTime={new Date(modal.gift.receivedAt).toISOString()}>{dates.format(modal.gift.receivedAt)}</time></dd></div>
      </dl>
+     {modal.gift.wish && <div className="gifts-wish-display">
+      <h3>Пожелание</h3>
+      <p dir="auto">{modal.gift.wish}</p>
+     </div>}
     </>}
     {modal.kind === 'catalog' && <>
      <h2 id="gift-dialog-title">Выбрать подарок</h2>
@@ -200,6 +208,11 @@ export function GiftsScreen({active}:{active:boolean}) {
      <div className="gifts-detail-art"><GameIcon name={modal.gift.icon}/></div>
      <h2 id="gift-dialog-title">{modal.gift.name}</h2>
      <p className="gifts-confirm-price"><Stars price={modal.gift.price}/> Telegram Stars</p>
+     <label className="gifts-wish-field">
+      <span>Пожелание <small>{wish.length} / {maxGiftWishLength}</small></span>
+      <textarea value={wish} onChange={event => setWish(event.target.value)} maxLength={maxGiftWishLength}
+       placeholder="По желанию" rows={3} disabled={paying}/>
+     </label>
      <label className="gifts-anonymous"><input type="checkbox" checked={anonymous} onChange={event => setAnonymous(event.target.checked)} disabled={paying}/>Подарить анонимно</label>
      {unavailable && <p>{unavailable}</p>}
      {notice && <p className="gifts-notice" role="status">{notice}</p>}

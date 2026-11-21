@@ -489,3 +489,37 @@
 .clothes-grid .item-preview .pixel-avatar *{animation:none!important;transition:none!important}
 
 @media(max-width:445px){.modern .bottom-nav>div{gap:2px;padding:3px}.modern .bottom-nav button{font-size:clamp(8px,2.25vw,10px);letter-spacing:-.12px}.modern .bottom-nav button .game-icon{width:22px;height:22px}}
+
+@media(max-width:600px){
+ .modern{--nav-height:calc(61px + var(--app-safe-bottom))}
+ .modern .bottom-nav button{min-height:46px}
+ .modern .game-page[data-screen=room]{padding-block:6px}
+ .modern .home-layout{height:100%;min-height:0;gap:6px}
+ .home-layout > :not(.photo-room){flex-shrink:0}
+ .modern .home-layout .photo-room{
+  --room-avatar-size:min(58vw,230px,72cqh);
+  --room-floor:44px;
+  --feeding-floor:calc(var(--room-floor) + clamp(80px,22vw,96px));
+  flex:1 0 0;height:auto;min-height:160px;container-type:size;
+ }
+ .modern .home-layout .photo-room .actor-position{width:var(--room-avatar-size);height:var(--room-avatar-size)}
+ .modern .home-layout .photo-room .actor-position:not([class*="activity-"]){bottom:var(--room-floor)}
+ .modern .home-layout .photo-room .floor-shadow{bottom:calc(var(--room-floor) + 2px)}
+ .modern .home-layout .photo-room.feeding .actor-position{
+  --room-avatar-size:min(58vw,230px,max(48px,calc(100cqh - var(--feeding-floor) - 13px)));
+  bottom:var(--feeding-floor);
+ }
+ .modern .home-layout .photo-room.feeding .floor-shadow{bottom:calc(var(--feeding-floor) + 2px)}
+ .home-layout .yoga-scene{--yoga-size:var(--room-avatar-size)}
+ .home-layout .tutorial-card{padding:5px 8px;font-size:12px;line-height:1.28}
+ .home-layout .tutorial-card p{margin-top:3px;font-size:11px}
+ .home-layout .quick-care{padding:0}
+ .home-layout .quick-actions button{min-height:44px}
+ .home-layout .quick-actions .game-icon{width:20px;height:20px}
+ .home-layout .scene-food{bottom:var(--room-floor);padding:3px}
+ .home-layout .food-picture{height:clamp(26px,9vw,38px)}
+ .home-layout .food-picture:has(img){width:clamp(30px,10vw,43px)}
+ .home-layout .scene-play .food-picture .game-icon{height:32px;width:32px}
+ .home-layout .scene-food-grid small{margin-top:2px;padding:2px 0 0}
+ .home-layout .scene-play .scene-food-grid small{white-space:normal}
+}

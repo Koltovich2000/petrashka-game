@@ -2,6 +2,7 @@ import {timingSafeEqual} from 'node:crypto';
 import {resolve} from 'node:path';
 import {verifyTelegramProfile} from './telegram-auth.mjs';
 import {createGiftStore, giftCatalog} from './gifts-store.mjs';
+import {parseGiftWish} from '../src/giftWish.ts';
 
 const giftPrefix = 'gift:';
 const maxBody = 32_768;
@@ -117,7 +118,11 @@ export function createGiftsApi({
    }
    const item = giftCatalog.find(gift => gift.id === body.giftId);
    if (!item) return reply(res,400,{error:'unknown_gift'});
-   const id = await (await store()).create(item,sender,body.anonymous === true);
+   const wish = body.wish === undefined ? '' : parseGiftWish(body.wish);
+   if (wish === null) {
+    return reply(res,400,{error:'invalid_gift_wish'});
+   }
+   const id = await (await store()).create(item,sender,{anonymous:body.anonymous === true,wish});
    const url = await botApi('createInvoiceLink',{
     title:item.name, description:'Подарок на общий стенд игры «Тамагочи Петрашка»',
     payload:id, currency:item.currency, provider_token:'',
@@ -130,6 +135,8 @@ export function createGiftsApi({
  }
 
  return {
+  async adminPage(page){return (await store()).page(page,true);},
+  async moderate(id,command){return (await store()).moderate(id,command);},
   handle(req,res,path,params) {
    if (!['/api/gifts','/api/gifts/catalog','/api/gifts/invoice','/api/gifts/status','/api/telegram/gifts-webhook'].includes(path)) return false;
    return route(req,res,path,params).catch(error => {

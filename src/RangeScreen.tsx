@@ -101,24 +101,33 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
  const physics=useRangeMotion(stage,actor,collision=>{
   if(collision.speed<RANGE_BALANCE.collisionMinSpeed||performance.now()-impactAt.current<RANGE_BALANCE.collisionDelay)return;
   impactAt.current=performance.now();
-  const group=actor.current?.querySelector<SVGGElement>(`[data-avatar-layer="${collision.part}"]`);
+  const body=actor.current;
+  const arena=stage.current;
+  const group=body?.querySelector<SVGGElement>(`[data-avatar-layer="${collision.part}"]`);
   if(!group)return;
   const matrix=group.getScreenCTM();
-  if(!matrix)return;
-  const room=stage.current!.getBoundingClientRect();
-  const point=new DOMPoint((collision.x??0)+room.left,(collision.y??0)+room.top).matrixTransform(matrix.inverse());
-  register({x:point.x,y:point.y,layer:collision.part!,bodyPart:hitName(collision.part!)},'collision');
- },(x,y,vx,vy)=>{
-  const room=stage.current!.getBoundingClientRect();
+  if(!matrix||!arena)return;
+  const room=arena.getBoundingClientRect();
+  const point=new DOMPoint(collision.x+room.left+arena.clientLeft,collision.y+room.top+arena.clientTop).matrixTransform(matrix.inverse());
+  register({x:point.x,y:point.y,layer:collision.part,bodyPart:hitName(collision.part)},'collision');
+ },(dx,dy,vx,vy)=>{
+  const arena=stage.current;
+  const body=actor.current;
+  if(!arena||!body)return {dx:0,dy:0,contacts:[]};
+  const room=arena.getBoundingClientRect();
+  const left=room.left+arena.clientLeft,top=room.top+arena.clientTop;
+  const stroke=body.clientWidth*.014;
   const boxes=rangePartsList.flatMap(part=>{
    if(ledger.current.detached.has(part))return [];
-   const b=measure(part);
-   return b?[{x:b.left-room.left,y:b.top-room.top,w:b.width,h:b.height,part}]:[];
+   const group=body.querySelector<SVGGElement>(`[data-avatar-layer="${part}"]`);
+   // The head group contains the full atlas. Measure one visible sprite frame.
+   const bounds=part==='head'?measure(part):group?.getBoundingClientRect();
+   return bounds&&bounds.width&&bounds.height?[{
+    x:bounds.left-left-stroke,y:bounds.top-top-stroke,
+    w:bounds.width+stroke*2,h:bounds.height+stroke*2,part,
+   }]:[];
   });
-  const result=resolveContacts(boxes,x-physics.position.current.x,y-physics.position.current.y,vx,vy,room.width,room.height);
-  return {x:physics.position.current.x+result.dx,y:physics.position.current.y+result.dy,
-   vx:result.contact&&(result.contact.side==='left'||result.contact.side==='right')?-vx*.38:vx,
-   vy:result.contact&&(result.contact.side==='floor'||result.contact.side==='ceiling')?-vy*.28:vy,collisions:result.contact?[result.contact]:[]};
+  return resolveContacts(boxes,dx,dy,vx,vy,arena.clientWidth,arena.clientHeight);
  });
 
  const [reaction,setReaction]=useState<{id:number;part:Hit;target:Target}|null>(null);
@@ -254,7 +263,7 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   <div ref={stage} className="range-stage">
    <RangeBackdrop/>
    {reaction&&<span className="range-reaction" key={`label-${reaction.id}`}>{reactions[reaction.part].text}</span>}
-   <div ref={actor} className={`range-actor range-motion-${physics.motion}`} style={{translate:`${physics.offset.x}px ${physics.offset.y}px`}} onPointerDown={aim} onPointerMove={physics.dragMove} onPointerUp={event=>physics.release(event)} onPointerCancel={event=>physics.release(event,true)} onLostPointerCapture={event=>physics.release(event,true)}>
+   <div ref={actor} className={`range-actor range-motion-${physics.motion}`} onPointerDown={aim} onPointerMove={physics.dragMove} onPointerUp={event=>physics.release(event)} onPointerCancel={event=>physics.release(event,true)} onLostPointerCapture={event=>physics.release(event,true)}>
     <div className={`range-avatar-rig ${spawning?'range-spawn':''} ${growing.map(p=>'range-grow-'+p).join(' ')} ${Array.from(health.detached).map(p=>'range-cut-'+p).join(' ' )}`} style={{transform:`rotate(${physics.tilt}deg) scale(${physics.squeezeAxis==='horizontal'?1+physics.squash:1-physics.squash*.45},${physics.squeezeAxis==='vertical'?1+physics.squash:1-physics.squash*.45})`}}>
      <PixelAvatar rangeFaces outfit={outfit} wetness={wetness} pose="range" state={emotion} hit={reaction?.part} decals={decals} joints={joints}/>
     </div>

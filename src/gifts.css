@@ -59,9 +59,12 @@
  padding:0;box-shadow:0 12px 40px #0009;
 }
 .gifts-dialog::backdrop{background:#100d22ba}
-.gifts-dialog-content{position:relative;padding:19px;text-align:center}
-.gifts-dialog h2{margin:3px 27px 13px;font-size:clamp(19px,5vw,25px)}
-.gifts-dialog-close{position:absolute;top:8px;right:8px;width:34px;height:34px;padding:0;font-size:20px}
+.gifts-dialog-content{position:relative;padding:15px;text-align:center}
+.gifts-dialog h2{margin:0 36px 12px;font-size:clamp(19px,5vw,25px);line-height:1.35}
+.gifts-dialog button.gifts-dialog-close:not(.mascot):not(.mini-stats button){
+ position:absolute;z-index:1;top:8px;right:8px;width:38px;height:38px;
+ display:grid;place-items:center;padding:0;font-size:20px;line-height:1;
+}
 .gifts-detail-art{display:grid;place-items:center;margin:0 auto 8px;width:100px;height:100px;background:radial-gradient(#d9924c55,transparent 73%)}
 .gifts-detail-art :is(.game-icon,.pixel-icon){width:76px;height:76px}
 .gifts-facts{margin:0;text-align:start}
@@ -72,8 +75,21 @@
 .gifts-catalog button{display:grid;justify-items:center;align-content:center;gap:5px;padding:7px 2px;min-height:90px;font-size:clamp(10px,2.8vw,13px);overflow-wrap:anywhere}
 .gifts-catalog :is(.game-icon,.pixel-icon){width:32px;height:32px}
 .gifts-confirm-price{margin:8px}
+.gifts-wish-field,.gifts-wish-display{display:grid;gap:6px;margin-top:12px;text-align:start}
+.gifts-wish-field>span{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px}
+.gifts-wish-field small{color:#d0c4ee;font-variant-numeric:tabular-nums}
+.gifts-wish-field textarea{
+ width:100%;resize:vertical;min-height:72px;max-height:140px;padding:8px 10px;
+ border:1px solid #62557b;border-radius:10px;background:#171b32;color:inherit;font:inherit;font-size:16px;
+}
+.gifts-wish-field textarea:focus-visible{outline:2px solid #ffd36f;outline-offset:1px}
+.gifts-wish-display{padding:10px 12px;border-radius:10px;background:#191d34}
+.gifts-wish-display h3,.gifts-wish-display p{margin:0}
+.gifts-wish-display h3{color:#d0c4ee;font-size:13px}
+.gifts-wish-display p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45}
 .gifts-anonymous{display:inline-flex;gap:8px;align-items:center;padding:8px}
 .gifts-anonymous input{width:18px;height:18px;accent-color:#ffd36f}
 .gifts-confirm-actions{display:grid;grid-template-columns:auto 1fr;gap:8px;margin-top:11px}
 .gifts-confirm-actions button{padding:9px}
 @media(max-width:360px){.gifts-dialog-content{padding:13px}.gifts-slot{min-height:88px}.gifts-plaque{gap:0}}
+@media(max-height:520px){.gifts-dialog .gifts-catalog button{min-height:64px}.gifts-catalog :is(.game-icon,.pixel-icon){width:25px;height:25px}}

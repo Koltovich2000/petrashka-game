@@ -23,6 +23,7 @@ import {useGameState} from './useGameState';
 import {HospitalScreen} from './HospitalScreen';
 import {hospitalRules} from './hospital';
 const AdminPanel=lazy(()=>import('./AdminPanel').then(m=>({default:m.AdminPanel})));
+const AdminDashboard=lazy(()=>import('./AdminDashboard').then(m=>({default:m.AdminDashboard})));
 const tabs=[{id:'wardrobe',label:'Гардероб'},{id:'range',label:'Полигон'},{id:'room',label:'Главная'},{id:'shop',label:'Магазин'},{id:'gifts',label:'Подарки'}] as const;
 function App({profile}: {profile?:TelegramProfile}){
  const playerId=profile?.id;
@@ -168,13 +169,15 @@ function App({profile}: {profile?:TelegramProfile}){
   }
  }
  if(!ready)return <main className="app"><p role="status">{error||'Загружаем твоё сохранение…'}</p>{error&&<button onClick={()=>void send({kind:'sync'})}>Повторить</button>}</main>;
- if(!game.introCompleted)return <Intro onFinish={finishIntro} storageError={Boolean(error)}/>;
- if(game.hospital)return <HospitalScreen game={game} hospital={game.hospital} error={error} onNotice={hospitalNotice}/>;
+ const dashboard=profile?.isAdmin&&<Suspense fallback={null}><AdminDashboard token={profile.gameToken}/></Suspense>;
+ if(!game.introCompleted)return <><Intro onFinish={finishIntro} storageError={Boolean(error)}/>{dashboard&&<div className="modern admin-entry">{dashboard}</div>}</>;
+ if(game.hospital)return <><HospitalScreen game={game} hospital={game.hospital} error={error} onNotice={hospitalNotice}/>{dashboard&&<div className="modern admin-entry">{dashboard}</div>}</>;
  return <div className={`game-shell modern${activityBusy?' activity-busy':''}`} onClickCapture={noticeOnClick}>
  {activityBusy&&activityNotice&&<div key={activityNotice.id} className="activity-notice" role="status"
   data-below={activityNotice.y<100} style={{left:activityNotice.x,top:activityNotice.y}}
   onAnimationEnd={()=>setActivityNotice(notice=>notice?.id===activityNotice.id?null:notice)}>{activityNotice.text}</div>}
- { (localAdmin||profile?.isAdmin)&&<Suspense fallback={null}>
+ {dashboard}
+ {localAdmin&&<Suspense fallback={null}>
   <AdminPanel game={game} local={localAdmin} error={error}
    onSet={async values=>{
     const update=await send({kind:'admin',values});
@@ -184,7 +187,7 @@ function App({profile}: {profile?:TelegramProfile}){
    onChange={update=>{if(localAdmin)commit(update(ref.current));}}/>
  </Suspense>}
  <PlayerBar level={level} xp={game.economy.xp} balance={game.economy.balance} wetness={wetness} onHelp={()=>setHelp(true)}/>
- <div className="game-pages">{tabs.map(tab=><main key={tab.id} hidden={screen!==tab.id} className="app game-page">
+ <div className="game-pages">{tabs.map(tab=><main key={tab.id} hidden={screen!==tab.id} className="app game-page" data-screen={tab.id}>
   {tab.id==='room'&&<>
    <HomeScreen location={location} onLocationChange={changeLocation} active={screen==='room'} game={game} outfit={closet.outfit} effect={effect} gain={gain} eatenFood={eatenFood} motionBusy={motionBusy} interact={interact} setMotionBusy={setMotionBusy} onWake={()=>void send({kind:'wake'})} onActivity={roomActivity} onCancelActivity={cancelCurrentActivity} onWashStroke={washStroke} onBallReturn={ballReturned} onMove={(id,x,y)=>void send({kind:'move',id,x,y})}/>
   </>}

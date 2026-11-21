@@ -3,10 +3,11 @@ import {createReadStream} from 'node:fs';
 import {stat} from 'node:fs/promises';
 import {extname, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {verifyTelegramInitData} from './telegram-auth.mjs';
+import {verifyTelegramProfile} from './telegram-auth.mjs';
 import {createGiftsApi} from './gifts-api.mjs';
 import {createGameApi} from './game-api.mjs';
 import {issueGameSession} from './game-session.mjs';
+import {createAdminApi} from './admin-api.mjs';
 
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const types = {
@@ -30,6 +31,7 @@ export function createAppServer({
  const admins = new Set(adminIds.split(',').map(id => id.trim()).filter(id => /^[1-9]\d*$/.test(id)));
  const gifts = createGiftsApi({botToken,...giftOptions});
  const game = createGameApi({botToken,admins,...gameOptions});
+ const admin = createAdminApi({botToken,admins,game,gifts});
  const server = createServer(async (req,res) => {
   res.setHeader('X-Content-Type-Options','nosniff');
   let path, url;
@@ -40,6 +42,7 @@ export function createAppServer({
 
   if (path === '/healthz' && req.method === 'GET') return json(res,200,{ok:true});
   if (path === '/api/game') return game.handle(req,res);
+  if (path.startsWith('/api/admin/')) return admin(req,res,path,url.searchParams);
   if (path === '/api/telegram/auth') {
    if (req.method !== 'POST') {
     res.setHeader('Allow','POST');
@@ -59,8 +62,10 @@ export function createAppServer({
      chunks.push(chunk);
     }
     const {initData} = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    const user = verifyTelegramInitData(initData,botToken);
-    return user ? json(res,200,{user:{...user,isAdmin:admins.has(user.id),gameToken:issueGameSession(user.id,botToken)}}) : json(res,401,{error:'invalid_or_expired_init_data'});
+    const user = verifyTelegramProfile(initData,botToken);
+    if (!user) return json(res,401,{error:'invalid_or_expired_init_data'});
+    await game.rememberProfile(user).catch(error=>console.error('Player profile update failed',error.code??error.name));
+    return json(res,200,{user:{id:user.id,isAdmin:admins.has(user.id),gameToken:issueGameSession(user.id,botToken)}});
    } catch {
     return json(res,400,{error:'invalid_json'});
    }

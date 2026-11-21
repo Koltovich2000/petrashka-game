@@ -1,5 +1,10 @@
 import pg from 'pg';
 
+function postgresParams(sql){
+ let index=0;
+ return sql.replace(/\?/g,()=>`$${++index}`);
+}
+
 // The App Platform container is disposable. All live sessions use the same database.
 export async function openGiftsPostgres(connectionString) {
  const pool = new pg.Pool({connectionString,max:4,connectionTimeoutMillis:4000,statement_timeout:4000});
@@ -20,6 +25,9 @@ export async function openGiftsPostgres(connectionString) {
      status TEXT NOT NULL CHECK(status IN ('pending', 'checkout', 'paid', 'refunded')),
      checkout_id TEXT UNIQUE, charge_id TEXT UNIQUE
     );
+    ALTER TABLE petrashka_gifts ADD COLUMN IF NOT EXISTS wish TEXT NOT NULL DEFAULT '';
+    ALTER TABLE petrashka_gifts ADD COLUMN IF NOT EXISTS removed INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE petrashka_gifts ADD COLUMN IF NOT EXISTS stand_position BIGINT;
     CREATE INDEX IF NOT EXISTS petrashka_gift_ranking
     ON petrashka_gifts(price DESC, paid_at ASC, paid_order ASC) WHERE status = 'paid';
    `);
@@ -36,13 +44,22 @@ export async function openGiftsPostgres(connectionString) {
  }
  return {
   prepare(sql) {
-   let n = 0;
-   const query = sql.replace(/\?/g, () => '$' + ++n);
+   const query = postgresParams(sql);
    return {
     async get(...args) {return (await pool.query(query,args)).rows[0];},
     async all(...args) {return (await pool.query(query,args)).rows;},
     async run(...args) {return {changes:(await pool.query(query,args)).rowCount};},
    };
+  },
+  async reorder(sql,...args){
+   const client=await pool.connect();
+   try{
+    await client.query('BEGIN');
+    await client.query('LOCK TABLE petrashka_gifts IN SHARE ROW EXCLUSIVE MODE');
+    const result=await client.query(postgresParams(sql),args);
+    await client.query('COMMIT');
+    return {changes:result.rowCount};
+   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   },
   close() {return pool.end();},
  };

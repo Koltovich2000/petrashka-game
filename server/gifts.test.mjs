@@ -4,9 +4,13 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Readable} from 'node:stream';
+import {DatabaseSync} from 'node:sqlite';
 import test from 'node:test';
 import {createGiftsApi} from './gifts-api.mjs';
 import {createGiftStore, giftCatalog} from './gifts-store.mjs';
+import {maxGiftWishLength} from '../src/giftWish.ts';
+import {createAdminApi} from './admin-api.mjs';
+import {issueGameSession} from './game-session.mjs';
 
 const botToken = 'gift-test-bot';
 const webhookSecret = 'test_secret_123456789012345678901234567890';
@@ -15,6 +19,7 @@ const spender = {id:105, first_name:'Имя', username:'nickname'};
 const secondPlayer = {id:106, first_name:'Зритель'};
 const burger = giftCatalog.find(item => item.id === 'burger');
 const crown = giftCatalog.find(item => item.id === 'crown');
+const mug = giftCatalog.find(item => item.id === 'mug');
 
 function sign(user) {
  const params = new URLSearchParams({auth_date:String(Math.floor(Date.now() / 1000)), user:JSON.stringify(user)});
@@ -50,8 +55,8 @@ test('publishes a gift only after verified Telegram payment, with idempotency an
  const update = body => request(api,webhook,body,{'x-telegram-bot-api-secret-token':webhookSecret});
  const wall = async () => (await request(api,'/api/gifts')).body;
  const status = (id,user = spender) => request(api,'/api/gifts/status',{id,initData:sign(user)});
- const invoice = (user, anonymous) => request(api,'/api/gifts/invoice',{
-  initData:sign(user),giftId:burger.id,anonymous,price:1,sender:'Подмена',
+ const invoice = (user, anonymous, wish) => request(api,'/api/gifts/invoice',{
+  initData:sign(user),giftId:burger.id,anonymous,wish,price:1,sender:'Подмена',
  });
  const checkout = (id,queryId,fields = {}) => ({
   pre_checkout_query:{id:queryId,from:spender,invoice_payload:id,total_amount:burger.price,currency:'XTR',...fields},
@@ -63,8 +68,10 @@ test('publishes a gift only after verified Telegram payment, with idempotency an
  }});
  const denied = await request(api,'/api/gifts/invoice',{initData:sign(spender).replace('nickname','fake'),giftId:burger.id});
  assert.equal(denied.status,401);
+ assert.equal((await invoice(spender,true,'я'.repeat(maxGiftWishLength+1))).body.error,'invalid_gift_wish');
  assert.equal(calls.length,0);
- const created = await invoice(spender,true);
+ const wish = 'Хорошего дня!\nУдачи, Петрашка!';
+ const created = await invoice(spender,true,`  ${wish}  `);
  assert.equal(created.status,200);
  const {id} = created.body;
  assert.deepEqual(calls[0].data.prices,[{label:burger.name,amount:burger.price}]);
@@ -85,7 +92,7 @@ test('publishes a gift only after verified Telegram payment, with idempotency an
  assert.deepEqual(replies.map(reply => reply.status),[200,200]);
  assert.equal((await status(id)).body.status,'paid');
  assert.deepEqual(await wall(),{gifts:[{
-  id,name:burger.name,icon:burger.icon,price:burger.price,currency:'XTR',sender:'Аноним',receivedAt:1700000000000,
+  id,name:burger.name,icon:burger.icon,price:burger.price,currency:'XTR',sender:'Аноним',receivedAt:1700000000000,wish,priceRank:1,
  }],page:1,pages:1,total:1,senders:1});
  const duplicate = (await invoice(spender,false)).body.id;
  await update(checkout(duplicate,'checkout-duplicate'));
@@ -110,7 +117,7 @@ async function checkRanking(open, t) {
  const sender = {id:String(spender.id),displayName:'@nickname'};
  const start = 1700000000000;
  const paid = async (item,index,moment) => {
-  const id = await store.create(item,sender,false,start);
+  const id = await store.create(item,sender,{now:start});
   assert.equal(await store.checkout(id,sender.id,item.price,'XTR','query-' + index,start + 10),true);
   assert.equal(await store.complete(id,sender.id,item.price,'XTR','charge-' + index,moment),true);
   return id;
@@ -142,6 +149,87 @@ test('sorts shared gifts across 15-item pages and persists them after reopening 
  } finally {
   t.after(() => rm(directory,{recursive:true,force:true}));
  }
+});
+
+test('upgrades a SQLite gift database with already paid gifts',async t => {
+ const directory = await mkdtemp(join(tmpdir(),'petrashka-gifts-'));
+ t.after(() => rm(directory,{recursive:true,force:true}));
+ const path = join(directory,'gifts.sqlite');
+ const original = await createGiftStore(path);
+ const id = await original.create(burger,{id:'105',displayName:'Имя'});
+ assert.ok(await original.checkout(id,'105',burger.price,'XTR','legacy-checkout'));
+ assert.ok(await original.complete(id,'105',burger.price,'XTR','legacy-charge',1700000000000));
+ await original.close();
+ const legacy = new DatabaseSync(path);
+ legacy.exec('ALTER TABLE gifts DROP COLUMN wish');
+ legacy.close();
+
+ const upgraded = await createGiftStore(path);
+ try {
+  const [gift] = (await upgraded.page(1)).gifts;
+  assert.equal(gift.id,id);
+  assert.equal(gift.wish,'');
+  assert.equal(await upgraded.paymentStatus(id,'105'),'paid');
+ } finally {
+  await upgraded.close();
+ }
+});
+
+test('admin gift moderation keeps payment data and manual positions across pages',async t=>{
+ const api=createGiftsApi({botToken,webhookSecret,databasePath:':memory:',databaseUrl:'',botApi:()=> 'https://t.me/$test_invoice'});
+ t.after(()=>api.close());
+ const admin={handle:createAdminApi({botToken,admins:new Set(['105']),gifts:api})};
+ const authorization={authorization:'Bearer '+issueGameSession('105',botToken),'content-type':'application/json'};
+ const update=body=>request(api,webhook,body,{'x-telegram-bot-api-secret-token':webhookSecret});
+ const page=async(number=1)=>(await request(api,`/api/gifts?page=${number}`)).body;
+ const moderate=(giftId,command,headers=authorization)=>request(admin,'/api/admin/gifts',{giftId,...command},headers);
+ let sequence=0;
+ async function pay(item,anonymous=false){
+  const invoice=await request(api,'/api/gifts/invoice',{giftId:item.id,anonymous,wish:'Изначальное пожелание',initData:sign(spender)});
+  const id=invoice.body.id;
+  const n=++sequence;
+  const payment={invoice_payload:id,total_amount:item.price,currency:item.currency};
+  const checkout=await update({pre_checkout_query:{...payment,from:spender,id:`checkout-${n}`}});
+  assert.equal(checkout.body.ok,true);
+  const successful={message:{from:spender,date:1700000000,successful_payment:{...payment,telegram_payment_charge_id:`charge-${n}`}}};
+  assert.equal((await update(successful)).status,200);
+  return {id,successful};
+ }
+
+ const top=await pay(crown);
+ for(let i=0;i<15;i++)await pay(burger);
+ const last=await pay(mug,true);
+ assert.equal((await page(2)).gifts[1].id,last.id);
+ assert.equal((await moderate(last.id,{kind:'remove'},{authorization:'Bearer '+issueGameSession('106',botToken)})).status,403);
+ assert.equal((await moderate(last.id,{kind:'edit',wish:'x'.repeat(maxGiftWishLength+1)})).status,400);
+ assert.equal((await moderate(last.id,{kind:'edit',wish:'  Новое пожелание  ',anonymous:false})).status,200);
+ assert.equal((await moderate(last.id,{kind:'move',position:1})).status,200);
+ let wall=await page();
+ assert.equal(wall.gifts[0].id,last.id);
+ assert.equal(wall.gifts[0].wish,'Новое пожелание');
+ assert.equal(wall.gifts[0].sender,'@nickname');
+ assert.equal(wall.gifts[0].priceRank,null);
+ assert.equal(wall.gifts[1].id,top.id);
+ assert.equal(wall.gifts[1].priceRank,1);
+ assert.ok(!Object.hasOwn(wall.gifts[0],'anonymous'));
+
+ assert.equal((await moderate(last.id,{kind:'move',position:16})).status,200);
+ const p2=(await request(admin,'/api/admin/gifts?page=2',undefined,authorization)).body;
+ assert.equal(p2.gifts[0].id,last.id);
+ assert.equal(p2.gifts[0].position,16);
+ assert.equal(p2.gifts[0].manual,true);
+ await moderate(wall.gifts[2].id,{kind:'move',position:1});
+ const latest=await pay(crown);
+ wall=await page();
+ assert.equal(wall.gifts[1].id,top.id);
+ assert.equal(wall.gifts[2].id,latest.id);
+ assert.equal((await moderate(last.id,{kind:'reset'})).status,200);
+ assert.equal((await page(2)).gifts.at(-1).id,last.id);
+ assert.equal((await moderate(last.id,{kind:'remove'})).status,200);
+ assert.equal((await update(last.successful)).status,200);
+ const payment=(await request(api,'/api/gifts/status',{id:last.id,initData:sign(spender)})).body;
+ assert.equal(payment.status,'paid');
+ assert.equal((await page(2)).gifts.some(gift=>gift.id===last.id),false);
 });
 
 test('applies the same ranking in PostgreSQL', {skip:!process.env.GIFTS_TEST_DATABASE_URL},async t => {

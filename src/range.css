@@ -56,3 +56,9 @@
 @keyframes range-new{0%{transform:translateY(-800px)}72%{transform:translateY(0) scale(1.1,.88)}87%{transform:translateY(-13px)}100%{transform:none}}
 .range-old-fade{opacity:0;transition:opacity .2s}
 @media(prefers-reduced-motion:reduce){.range-spawn{animation-duration:.01s}}
+@media(max-width:600px){
+ .range-screen{height:100%;min-height:0;gap:6px;padding-bottom:0}
+ .range-stage{flex:1 0 0;height:auto;min-height:160px}
+ .range-actor{width:min(108cqw,63cqh,340px)}
+ .range-selector{position:static}
+}
