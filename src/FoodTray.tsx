@@ -1,9 +1,9 @@
 import {useEffect, useRef, useState, type PointerEvent} from 'react';
 import {createPortal} from 'react-dom';
-import {FOOD, type FoodId} from './balance';
+import {FOOD,TUTORIAL, type FoodId} from './balance';
 import {foodReason, type Game} from './game';
 
-type Drag = { id: FoodId; x: number; y: number; overMouth: boolean};
+type Drag = {id: FoodId; x: number; y: number};
 
 function touchesMouth(button: HTMLButtonElement, x: number, y: number) {
  const mouth = button.closest('.photo-room')?.querySelector('.feed-mouth-target');
@@ -14,7 +14,7 @@ function touchesMouth(button: HTMLButtonElement, x: number, y: number) {
  ) <= 1);
 }
 
-function FoodPicture({id}: {id: FoodId}) {
+export function FoodPicture({id}: {id: FoodId}) {
  return <span className="food-picture" aria-hidden="true">
   {id === 'free' ? '🥪' : <img className={`dish-art-${id}`} src={`/assets/food/${id}.jpg`} alt="" draggable={false}/>}
  </span>;
@@ -26,7 +26,7 @@ export function FoodTray({game, onFeed}: {game: Game; onFeed: (id: FoodId) => vo
  const pointer = useRef<number | null>(null);
  const tray = useRef<HTMLDivElement>(null);
  const foods = FOOD.filter(item => game.tutorial === 0 ? item.id === 'free'
-  : game.tutorial === 2 ? item.id === 'noodles'
+  : game.tutorial === TUTORIAL.noodles ? item.id === 'noodles'
   : item.id !== 'free' || game.economy.balance < FOOD[0].price);
  const pageCount = Math.ceil(foods.length / 3);
  const visiblePage = Math.min(page, pageCount - 1);
@@ -53,7 +53,7 @@ export function FoodTray({game, onFeed}: {game: Game; onFeed: (id: FoodId) => vo
     <div key={index} className="scene-food-grid" inert={index!==visiblePage} aria-hidden={index!==visiblePage}>
     {foods.slice(index*3,index*3+3).map(item => {
     const reason = foodReason(game, item.id);
-    const price = item.id === 'free' ? '0 ₽' : `${game.tutorial === 2 ? 100 : item.price} ₽`;
+    const price = item.id === 'free' ? '0 ₽' : `${game.tutorial === TUTORIAL.noodles ? TUTORIAL.noodlePrice : item.price} ₽`;
     const effects = [`+${item.food} сытости`, item.mood && `+${item.mood} настроения`,
      item.health && `+${item.health} здоровья`].filter(Boolean).join(', ');
     return <button key={item.id} type="button" aria-label={`${item.name}, ${price}, ${effects}`}
@@ -62,12 +62,17 @@ export function FoodTray({game, onFeed}: {game: Game; onFeed: (id: FoodId) => vo
       if (event.button !== 0 || pointer.current !== null) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       pointer.current = event.pointerId;
-      setDrag({id: item.id, x: event.clientX, y: event.clientY, overMouth: false});
+      setDrag({id: item.id, x: event.clientX, y: event.clientY});
      }}
      onPointerMove={event => {
       if (pointer.current !== event.pointerId) return;
-      setDrag({id: item.id, x: event.clientX, y: event.clientY,
-       overMouth: touchesMouth(event.currentTarget, event.clientX, event.clientY)});
+      if (touchesMouth(event.currentTarget,event.clientX,event.clientY)) {
+       pointer.current=null;
+       setDrag(null);
+       onFeed(item.id);
+       return;
+      }
+      setDrag({id: item.id, x: event.clientX, y: event.clientY});
      }}
      onPointerUp={event => finish(event, item.id)}
      onPointerCancel={event => finish(event, item.id)}
@@ -83,7 +88,7 @@ export function FoodTray({game, onFeed}: {game: Game; onFeed: (id: FoodId) => vo
   {pageCount > 1 && <button type="button" className="food-arrow" aria-label="Следующие блюда"
    disabled={visiblePage===pageCount-1 || !!drag} onClick={()=>setPage(visiblePage+1)}>›</button>}
   {drag && draggedItem && createPortal(
-   <span className={`food-drag${drag.overMouth ? ' food-drag-ready' : ''}`}
+   <span className="food-drag"
     aria-hidden="true" style={{left: drag.x, top: drag.y}}><FoodPicture id={draggedItem.id}/></span>, document.body,
   )}
  </div>;

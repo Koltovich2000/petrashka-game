@@ -1,0 +1,31 @@
+.hospital-screen{width:min(100%,760px);max-width:760px;padding-top:calc(16px + var(--app-safe-top));font-family:system-ui,sans-serif}
+.hospital-screen h1{font-size:clamp(23px,6vw,32px);margin:0 0 12px}
+.hospital-art{display:block;width:100%;border:1px solid #536387;border-radius:20px;image-rendering:pixelated}
+.hospital-head{transform:rotate(-17deg);transform-origin:153px 178px}
+.hospital-head .avatar-body>:not(.avatar-head){display:none}
+.hospital-pulse{stroke-dasharray:105 30;animation:hospital-beat 1.65s linear infinite}
+@keyframes hospital-beat{to{stroke-dashoffset:-135}}
+.hospital-dialog{
+ width:min(440px,calc(100% - 24px));max-height:calc(100dvh - 26px);margin:auto auto max(16px,var(--app-safe-bottom));
+ color:#f8f2ff;background:#222843;border:1px solid #8791bd;border-radius:18px;padding:17px;
+ box-shadow:0 12px 40px #10172b99;font:14px/1.45 system-ui,sans-serif
+}
+.hospital-dialog::backdrop{background:linear-gradient(transparent,#0b102593 70%)}
+.hospital-dialog h2{margin:0 0 8px;font-size:clamp(18px,5vw,25px)}
+.hospital-dialog p{margin:8px 0}
+.hospital-totals{display:grid;gap:4px;margin:12px 0}
+.hospital-totals div{display:flex;justify-content:space-between;gap:8px}
+.hospital-totals dd{margin:0;font-weight:700;white-space:nowrap}
+.medical-cost{color:#ff8b96;font-weight:750}
+.hospital-sales{margin:8px 0;padding-inline-start:18px}
+.hospital-sold-art{width:100px;height:76px;margin:8px auto;display:grid;place-items:center}
+.hospital-sold-art svg{max-width:100%;max-height:100%}
+.hospital-sold-art{animation:sold-away .6s .35s ease-in both}
+.hospital-sold-art.leaving{opacity:0}
+@keyframes sold-away{from{transform:scale(1);opacity:1}to{transform:scale(.84) translateY(-7px);opacity:.28}}
+.hospital-dialog button.hospital-next:not(.mascot):not(.mini-stats button){
+ border:1px solid #ffdc96;clip-path:none;border-radius:12px;background:linear-gradient(#ffe49c,#f7ad4f);
+ color:#25182d;font-weight:800;padding:10px;width:100%;margin-top:8px
+}
+.hospital-dialog button.hospital-next:not(.mascot):not(.mini-stats button)::before{content:none}
+@media(prefers-reduced-motion:reduce){.hospital-sold-art,.hospital-pulse{animation:none}}

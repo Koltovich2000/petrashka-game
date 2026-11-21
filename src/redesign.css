@@ -24,7 +24,7 @@
  background:linear-gradient(145deg,#252b47,#191f39);border:1.5px solid #454e78;border-top:0;
  border-radius:0 0 23px 23px;box-shadow:0 5px 14px #080c20a0;
 }
-.player-portrait{width:47px;aspect-ratio:1;flex:none;background:url('/assets/pixel-heads.png') left top/200% 200%;image-rendering:pixelated}
+.player-portrait{width:47px;height:auto;aspect-ratio:1;flex:none;image-rendering:pixelated}
 .player-identity{flex:1;min-width:0}.player-identity>strong{font-size:clamp(15px,4.5vw,20px);line-height:1.1}
 .player-xp{display:flex;align-items:center;gap:6px;margin-top:4px;color:#ffdb89;font-size:11px;white-space:nowrap}
 .xp-track{position:relative;width:min(100%,150px);height:15px;display:grid;place-items:center;color:white;font-weight:750;font-size:9px}
@@ -36,8 +36,6 @@
 .player-wallet{position:relative;display:flex;align-items:center;gap:6px;padding:6px 9px;background:#151a30;border:1px solid #454c72;border-radius:14px;white-space:nowrap;font-size:clamp(12px,3.4vw,17px)}
 .player-wallet .pixel-icon{width:22px;height:22px}
 .player-help{width:31px;height:32px;flex:none;padding:0;font-weight:800}
-.wallet-gain{position:absolute;z-index:4;right:0;top:100%;padding:5px 8px;background:#272238;border-radius:8px;color:#ffda79;animation:wallet-rise 2.6s both}
-@keyframes wallet-rise{0%{opacity:0;transform:translateY(10px)}15%,80%{opacity:1}100%{opacity:0;transform:translateY(-8px)}}
 .modern .game-page{padding:12px max(12px,var(--app-safe-right),calc((100% - 860px)/2)) 12px max(12px,var(--app-safe-left),calc((100% - 860px)/2));}
 .modern .game-page:not([hidden]){animation:page-in .19s ease-out}
 @keyframes page-in{from{opacity:.7}to{opacity:1}}
@@ -56,12 +54,17 @@
 .stat-card progress{grid-column:1/-1;width:100%;height:6px}
 .stat-card progress::-webkit-progress-value{background:var(--stat-color,#ffc05a);border-radius:20px}
 .stat-card:nth-child(1){--stat-color:#ed526b}.stat-card:nth-child(3){--stat-color:#9bd65a}.stat-card:nth-child(5){--stat-color:#61c9ee}
+.stat-card[data-recovering=true]{border-color:var(--stat-color,#ffc05a);animation:stat-recovery 1.2s ease-in-out infinite}
+@keyframes stat-recovery{25%,70%{filter:brightness(1.27);box-shadow:inset 0 0 10px #ffffff23}}
 .modern .home-layout .photo-room{flex:1 0 auto;height:clamp(300px,calc(100dvh - 318px),610px);padding:0;border:0;border-radius:20px;clip-path:none;background:#151e42;box-shadow:0 10px 32px #080a20a6}
 .modern .photo-room .location-photo{inset:0;clip-path:none}
 .modern .photo-room[data-location=room] .location-photo{background:#142044 url('/assets/bedroom-navy.png?scene=navy') center bottom/100% 100% no-repeat}
 .modern .actor-position{left:50%;width:clamp(205px,69vmin,390px);height:clamp(205px,69vmin,390px);bottom:49px}
 .modern .floor-shadow{left:50%;bottom:51px}
-.modern .photo-room .speech{top:9%;left:50%;max-width:76%;font-size:12px;padding:9px 13px 19px}
+.modern .actor-position .speech{
+ top:auto;bottom:calc(100% + 3px);left:50%;
+ max-width:min(92%,240px);font-size:12px;padding:9px 13px 19px;
+}
 .scene-day{position:absolute;right:10px;top:11px;z-index:4;border-radius:8px;padding:4px 8px;background:#121931b8;font-size:11px;font-weight:700}
 .modern button.sound-toggle{font-size:13px;top:8px;left:9px;width:34px;height:32px;padding:0}
 .modern .photo-room .locations{bottom:7px;left:8px;right:8px;gap:5px}
@@ -73,7 +76,6 @@
 .quick-actions button{flex:1;min-width:0;min-height:61px;display:grid;align-content:center;justify-items:center;gap:2px;padding:5px 2px;font-size:clamp(9px,2.7vw,13px)}
 .quick-actions button strong{font-weight:750}
 .quick-actions button small{font-size:8px;line-height:1}
-.care-hint{margin:0 0 5px;padding:7px 10px;background:#21294b;color:#f7dd9f;border-radius:11px;font-size:12px}
 .modern .screen-heading{margin:1px 0 11px}
 .modern .screen-heading h1{display:flex;align-items:center;gap:8px;color:#f6eff8;font-size:clamp(25px,6vw,36px)}
 .modern .wardrobe-preview{height:clamp(220px,36dvh,380px);margin:0 0 10px;border:1px solid #454c73;border-radius:22px;clip-path:none;background:#202b50 url('/assets/fitting-navy.png') center 65%/cover}
@@ -90,52 +92,18 @@
 .modern .clothes-grid strong{min-height:25px;color:#fbf8ff}.modern .clothes-grid button>span{color:#ffdc7e}
 .modern .item-preview{position:relative;clip-path:none;border-radius:10px;height:65px;background:#151b39}
 .modern .item-preview .pixel-avatar{display:block;width:100%;height:100%;overflow:hidden;padding:5px}
-.modern .outfit-details,.modern .shift-summary{padding:11px 13px;border:1px solid #565a81;border-radius:15px;background:#232943;clip-path:none}
+.modern .outfit-details{padding:11px 13px;border:1px solid #565a81;border-radius:15px;background:#232943;clip-path:none}
 .modern .outfit-details::before{content:none}.modern .outfit-details button{padding:7px 10px}
-.job-tree ul{padding:0;margin:0;list-style:none;display:flex;justify-content:center;align-items:flex-start;gap:12px}
-.job-tree li{position:relative;min-width:0;text-align:center;flex:1;max-width:540px}
-.job-tree li>ul{padding-top:21px;position:relative}
-.job-tree li>ul::before{content:'';position:absolute;top:0;left:50%;width:2px;height:12px;background:#dfaf6a}
-.job-tree li>ul>li::before{content:'';position:absolute;top:-10px;left:50%;height:10px;width:2px;background:#dfaf6a}
-.job-tree li>ul>li:not(:only-child)::after{content:'';position:absolute;top:-10px;width:calc(50% + 6px);height:2px;background:#dfaf6a;box-shadow:0 0 6px #ffca6b88}
-.job-tree li>ul>li:first-child::after{left:50%}.job-tree li>ul>li:last-child::after{right:50%}
-.modern button.job-node{position:relative;display:grid;justify-items:center;align-content:center;gap:3px;min-height:100px;width:100%;padding:9px 5px;font-size:13px;line-height:1.15}
-.modern button.job-node.current{width:min(100%,300px);margin:auto;background:linear-gradient(145deg,#ffeac1,#d6a878);color:#2c1d29;border-color:#ffdf89;box-shadow:0 0 17px #ffc46366}
-.modern button.job-node.available{background:#c8c6da;color:#262139;border-color:#fff0cb;animation:job-unlock .65s ease-out}
-.modern button.job-node.locked{background:linear-gradient(#323045,#242638);color:#c8c5d6;border-color:#605c76}
-.job-icon{font-size:25px}.job-check{position:absolute;right:6px;top:6px;background:#5e9a48;border-radius:50%;width:20px;height:20px;color:#fff}
-@keyframes job-unlock{from{box-shadow:0 0 24px #ffce70}to{box-shadow:none}}
-.shift-summary{margin-bottom:13px}.shift-summary p{margin:5px 0;font-size:13px}
-.job-sheet{
- position:fixed;inset:auto 0 0;margin:0 auto;width:min(100%,475px);max-width:none;max-height:calc(100dvh - 22px);
- padding:0;background:#202540;color:#fff;border:1.5px solid #686f9b;border-radius:24px 24px 0 0;
- box-shadow:0 -8px 35px #0008;
-}
-.job-sheet[open]{animation:sheet-in .2s ease-out}
-.job-sheet::backdrop{background:#090d21a5}
-@keyframes sheet-in{from{transform:translateY(30px);opacity:.5}to{transform:none;opacity:1}}
-.job-sheet-content{position:relative;padding:14px 16px calc(16px + var(--app-safe-bottom))}
-.job-sheet-content h2{margin:8px 0 4px;font-size:25px}.job-sheet-content p{margin:6px 0;color:#d5d7e8;font-size:14px}
-.modern button.sheet-close:not(.mascot):not(.mini-stats button){position:absolute;right:22px;top:20px;width:35px;height:35px}
-.job-banner{display:grid;place-items:center;min-height:82px;border-radius:16px;background:linear-gradient(155deg,#6271a4,#e69b74 65%,#6c495b);font-size:53px}
-.job-facts{display:grid;gap:0;margin:10px 0;padding:2px 10px;border:1px solid #4c5178;border-radius:12px;background:#282d4b}
-.job-facts div{display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px}.job-facts dd{color:#ffdb86;font-weight:800;margin:0}
-.job-sheet .shift-durations{margin:10px 0}.job-sheet .shift-durations button{padding:5px}
-@media(min-width:730px){.job-sheet{inset:0 16px 0 auto;margin:auto 0;border-radius:23px;width:370px;height:max-content}.modern .home-layout .photo-room{min-height:375px}}
 @media(max-width:520px){
  .modern .game-page{padding:8px max(8px,var(--app-safe-right)) 10px max(8px,var(--app-safe-left))}
  .stat-card{grid-template-columns:1fr;justify-items:center;gap:2px;padding:5px 2px;text-align:center}
  .stat-card .pixel-icon{width:20px;height:20px}.stat-card span{font-size:8px}.stat-card strong{font-size:14px}.stat-card progress{height:5px}
  .modern .clothes-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
- .modern .photo-room .speech{top:12%}
 }
 @media(max-width:350px){.player-bar{gap:5px;padding-inline:7px}.player-portrait{width:37px}.player-wallet{padding-inline:5px}.stat-deck{gap:3px}.quick-actions{gap:3px}}
 @media(prefers-reduced-motion:reduce){.modern *{animation:none!important;transition:none!important}}
 
 .modern .bottom-nav button:not([aria-current]):not(.mascot):not(.mini-stats button){background:transparent;border-color:transparent;box-shadow:none}
-.modern .job-node .game-icon{height:32px;width:32px}
-.modern .job-banner .game-icon{height:62px;width:62px}
-.modern .quick-care:has(.care-hint) .care-hint{position:absolute;bottom:100%;left:5px;right:5px;z-index:15;box-shadow:0 2px 8px #080a20a6}
 .modern .game-page{scrollbar-width:thin}
 .modern .bottom-nav button[aria-current=page]:not(.mascot):not(.mini-stats button),
 .modern button[aria-pressed=true]:not(.mascot):not(.mini-stats button),
@@ -148,14 +116,13 @@
 }
 .modern .quick-actions button{touch-action:manipulation}
 
-.modern .toast{clip-path:none;border:1px solid #e7b76b;border-radius:12px;background:#252840}
+.modern .toast{top:calc(var(--app-safe-top) + 72px);bottom:auto;clip-path:none;border:1px solid #e7b76b;border-radius:12px;background:#252840}
 .modern .toast::before{content:none}
 .modern .outfit-details strong{min-width:0}
 
 /* Taller play space: the feet stay on the floor while the ceiling moves up. */
 .modern .home-layout .photo-room{height:clamp(630px,92dvh,1020px);flex:0 0 auto;min-height:630px}
 .modern .actor-position{width:clamp(205px,66vmin,350px);height:clamp(205px,66vmin,350px)}
-.modern .photo-room .speech{top:10%;font-size:12px}
 .modern button.wake-button:not(.mascot):not(.mini-stats button){position:absolute;top:25%;left:50%;transform:translateX(-50%);z-index:15;padding:12px 20px;border-color:#ffd36f}
 .hygiene-effects{position:absolute;inset:0;pointer-events:none;z-index:5}
 .wet-drips{position:absolute;left:44%;top:78%;width:15%;height:18%}
@@ -167,14 +134,49 @@
 @keyframes stink-rise{0%{transform:translateY(24px);opacity:0}30%{opacity:.75}100%{transform:translateY(-30px);opacity:0}}
 .flying-mess{position:absolute;inset:0}.flying-mess span{position:absolute;left:45%;top:53%;width:25px;animation:poop-orbit 3.2s linear var(--delay) infinite}
 @keyframes poop-orbit{from{transform:rotate(0deg) translateX(100px) rotate(0deg)}to{transform:rotate(360deg) translateX(100px) rotate(-360deg)}}
-.floor-mess{position:absolute;bottom:48px;left:50%;width:210px;transform:translateX(-50%);display:flex;justify-content:space-between;pointer-events:none;z-index:2}.floor-mess span{width:31px}.floor-mess span:nth-child(2){transform:translateY(-12px)}
+.modern button.floor-mess:not(.mascot):not(.mini-stats button){
+ position:absolute;z-index:7;bottom:46px;width:48px;height:48px;padding:2px;
+ transform:translateX(-50%);border:0;background:none;box-shadow:none;
+}
+.floor-mess svg{display:block;width:100%;height:100%;transition:filter .15s,opacity .2s}
+.modern button.floor-mess:not(.mascot):not(.mini-stats button):is(:active,:focus-visible){outline:none;transform:translateX(-50%)}
+.modern button.floor-mess.dog-mess:not(.mascot):not(.mini-stats button){bottom:auto;width:34px;height:34px;translate:0 -81%}
+.floor-mess:not(:disabled):is(:hover,:focus-visible) svg{
+ filter:drop-shadow(1px 0 #ffe59a) drop-shadow(-1px 0 #ffe59a) drop-shadow(0 1px #ffe59a) drop-shadow(0 -1px #ffe59a) drop-shadow(0 0 3px #ffe59a99);
+}
+.modern button.floor-mess:disabled{opacity:1}
+.floor-mess.scrubbing svg{animation:floor-wipe 1.4s ease-out forwards}
+.floor-mess i{
+ position:absolute;left:24%;top:35%;width:7px;height:7px;background:#ffe7a9;
+ clip-path:polygon(50% 0,65% 35%,100% 50%,65% 65%,50% 100%,35% 65%,0 50%,35% 35%);
+ animation:floor-spark .46s steps(5) infinite;pointer-events:none;
+}
+.floor-mess i:last-child{left:63%;animation-delay:-.23s}
+@keyframes floor-wipe{to{opacity:.35;transform:scale(.82,.64);transform-origin:50% 90%}}
+@keyframes floor-spark{to{opacity:0;transform:translateY(-15px)}}
+.modern .actor-position.activity-clean{transition:transform .55s ease-in-out}
+.pose-clean .avatar-body{transform-origin:50px 99px;transform:rotate(42deg) scaleY(.78)}
+.pose-clean .avatar-head{animation:none}
+.pose-clean .arm-left{animation:floor-scrub .46s ease-in-out infinite}
+.pose-clean .arm-right{animation:floor-scrub .46s -.23s ease-in-out infinite}
+@keyframes floor-scrub{
+ 0%,100%{transform:translate(4px,3px) rotate(-12deg)}
+ 50%{transform:translate(8px,6px) rotate(-31deg)}
+}
+@media(prefers-reduced-motion:reduce){
+ .modern .actor-position.activity-clean{transition:none}
+ .pose-clean .arm,.floor-mess.scrubbing svg,.floor-mess i{animation:none}
+}
 .tutorial-card,.hygiene-warning{padding:10px 12px;margin:0;background:#2d2945;border:1px solid #e1bc6b;border-radius:13px;font-size:13px;line-height:1.45}.tutorial-card p{font-size:12px;margin:6px 0 0;color:#d3cee3}.tutorial-card button{display:block;padding:8px;margin-top:8px}
 @media(prefers-reduced-motion:reduce){.modern .stink-cloud svg{opacity:.65}.modern .flying-mess span{position:static;display:inline-block;margin:10px}}
-.modern .shift-durations[hidden]{display:none!important}
 .modern .dev-tools-toggle{position:fixed;right:5px;bottom:calc(var(--nav-height) + 5px);z-index:24;padding:4px 7px;font-size:9px;opacity:.7}
 .dev-tools label{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0}.dev-tools input{width:80px;background:#161d32;color:white;border:1px solid #676585;border-radius:5px;padding:5px}.time-tools{display:flex;gap:6px}.time-tools button{padding:6px;font-size:11px}
 .modern button.dev-tools-toggle:not(.mascot):not(.mini-stats button){position:fixed;right:5px;bottom:calc(var(--nav-height) + 5px);z-index:24;padding:4px 7px;font-size:9px;opacity:.7}
-.modern .bottom-nav>div{grid-template-columns:repeat(5,minmax(0,1fr))}.modern .bottom-nav button{font-size:11px}
+.modern .bottom-nav>div{
+ gap:5px;
+ grid-template-columns:repeat(5,minmax(0,1fr));
+}
+.modern .bottom-nav button{font-size:11px}
 .activity-status{padding:9px;margin:0;border:1px solid #a998dc;border-radius:12px;background:#242a46;font-size:13px}
 .modern button.room-object:not(.mascot):not(.mini-stats button){position:absolute;z-index:2;background:transparent;border:0;box-shadow:none;border-radius:12px;padding:0;display:flex;align-items:flex-end;justify-content:center}
 .modern button.placed-furniture:not(.mascot):not(.mini-stats button){position:absolute;z-index:4;transform:translate(-50%,-50%);width:85px;padding:0;background:none;border:0;box-shadow:none;touch-action:none}
@@ -183,34 +185,21 @@
 .modern button.arrange-toggle:not(.mascot):not(.mini-stats button){position:absolute;top:47px;right:8px;z-index:12;padding:6px;font-size:10px}
 .modern .actor-position[class*="activity-"]{transition:transform 1.2s ease-in-out}
 @keyframes foam-bob{50%{transform:translateY(-7px)}}
-.pose-computer .leg,.pose-toilet .leg{transform:translate(0,-5px) rotate(45deg)}.pose-computer .arm{animation:typing .35s steps(2) infinite}.pose-toilet .arm,.pose-tray .arm{transform:rotate(15deg)}
-@keyframes typing{50%{transform:rotate(-50deg)}}
+.pose-toilet .leg{transform:translate(0,-5px) rotate(45deg)}
+.pose-computer .leg{transform:translate(6px,2px) rotate(-68deg) scaleY(.82)}
+.pose-computer .arm{animation:typing .45s steps(2) infinite}
+.pose-computer .arm-left{animation-delay:-.22s}.pose-toilet .arm,.pose-tray .arm{transform:rotate(15deg)}
+@keyframes typing{0%,100%{transform:rotate(-64deg)}50%{transform:rotate(-78deg)}}
 .screen-spark{position:absolute;right:8%;top:52%;color:#91e1ff;animation:foam-bob .6s infinite}
 .toilet-spark{position:absolute;left:41%;top:78%;color:#f9d864;transform:rotate(75deg);animation:wet-drip 1s steps(5) infinite;pointer-events:none}
-.pose-yoga .leg-right{transform:rotate(65deg)}.pose-yoga .leg-left{transform:rotate(-65deg)}.pose-yoga .arm-right{transform:rotate(155deg)}.pose-yoga .arm-left{transform:rotate(-155deg)}
-.pose-dumbbells .arm{animation:weight-lift 1.5s ease-in-out infinite}.pose-dumbbells .arm-left{animation-delay:-.75s}@keyframes weight-lift{50%{transform:rotate(110deg)}}
-.activity-sleep .avatar-body{transform:translateY(-16px) rotate(-78deg) scale(.72);transform-origin:50px 80px}.activity-sleep .avatar-head{animation:none}
-.furniture-catalog{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.furniture-catalog article,.preset-panel{background:#262a45;border:1px solid #65638b;border-radius:17px;padding:14px;margin-bottom:12px}.furniture-catalog .furniture-art{max-width:180px;margin:auto}.furniture-catalog h2{font-size:18px}.furniture-catalog p,.preset-panel p{font-size:12px;color:#c5c6dc}.furniture-catalog button{padding:10px;width:100%}
-.preset-panel h2{font-size:16px;margin:0}.preset-panel input,.modal input{display:block;width:100%;border:1px solid #8577a5;background:#161c33;color:white;border-radius:8px;padding:9px;margin-top:6px}.preset-panel label{font-size:12px}.preset-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.preset-actions button,.preset-panel article button{padding:7px;font-size:11px}.preset-panel article{border-top:1px solid #555675;margin-top:10px;padding-top:10px;font-size:13px}.preset-panel article>div{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.furniture-catalog{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.furniture-catalog article{background:#262a45;border:1px solid #65638b;border-radius:17px;padding:14px;margin-bottom:12px}.furniture-catalog .furniture-art{max-width:180px;margin:auto}.furniture-catalog h2{font-size:18px}.furniture-catalog p{font-size:12px;color:#c5c6dc}.furniture-catalog button{padding:10px;width:100%}
 @media(prefers-reduced-motion:reduce){.modern .actor-position[class*="activity-"]{transition:none}}
 .activity-sleep .mascot,.actor-position[class*="activity-"] .mascot{pointer-events:none}
 
-.study-screen fieldset{border:0;padding:0;margin:12px 0 16px}
-.study-screen legend{padding:0;margin-bottom:8px;font-weight:700}
-.study-skills,.study-courses{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px}
-.study-skills button,.study-courses article{padding:10px}
-.study-skills strong{display:block;font-size:12px;color:#c4a7f5;margin-top:6px}
-.study-courses article{border:1px solid #535781;border-radius:12px;background:#232844}
-.study-courses h2{font-size:16px;margin:0}
-.study-courses p,.study-courses small{font-size:12px;line-height:1.4}
-.study-courses small{display:block;margin-top:6px}
-.study-screen progress{width:100%;accent-color:#c4a7f5}
 .shop-sections{display:flex;gap:8px;margin-bottom:14px}
 .shop-sections button{padding:8px 12px}
-.job-tree{overflow-x:auto}
-.job-tree>ul{min-width:420px}
 .modern .bottom-nav button{min-width:0;padding-inline:2px}
-@media(max-width:360px){.modern .bottom-nav button{font-size:10px}}
+@media(max-width:360px){.modern .bottom-nav button{font-size:9px}}
 
 /* The glow follows the traced silhouettes in the room artwork. */
 .room-object-outline{
@@ -232,22 +221,14 @@
 }
 .actor-activity span{color:#efd899;font-variant-numeric:tabular-nums}
 
-.care-viewport{overflow:hidden;flex:1;min-width:0;padding:3px 0}
-.care-track{display:flex;width:200%;transition:transform .28s cubic-bezier(.22,.75,.28,1)}
-.care-track-next{transform:translateX(-50%)}
-.care-page{display:flex;flex:0 0 50%;min-width:0;gap:6px;padding-inline:3px}
-.quick-actions .care-arrow{flex:0 0 44px;align-self:stretch;margin-block:3px}
 .quick-actions .care-tutorial-target{border-color:#ffd36f!important;box-shadow:inset 0 0 12px #ffd36f55!important}
 @media(prefers-reduced-motion:reduce){
- .care-track,.room-object-outline{transition:none}
+ .room-object-outline{transition:none}
 }
 .modern .game-pages,.modern .home-layout,.modern .quick-care{min-width:0}
 .modern .game-page{width:100%;overflow-x:hidden}
 .modern button.room-object:not(.mascot):not(.mini-stats button):active{transform:none}
 
-/* Keep both navigation buttons in place as the action cards slide. */
-.quick-actions .care-arrow{flex-basis:clamp(28px,7vw,44px)}
-.quick-actions .care-arrow:disabled{opacity:.32}
 .scene-food{
  position:absolute;z-index:13;left:8px;right:8px;bottom:45px;
  width:min(calc(100% - 16px),520px);margin-inline:auto;
@@ -273,7 +254,6 @@
  pointer-events:none;
 }
 .food-drag{position:fixed;z-index:100;pointer-events:none;transform:translate(-50%,-50%);font-size:36px;line-height:1}
-.food-drag-ready{filter:drop-shadow(0 0 6px #ffdd87)}
 @media(max-width:360px){.scene-food-grid small{white-space:normal}}
 
 .scene-food{display:flex;align-items:center;gap:clamp(6px,2vw,18px);width:min(calc(100% - 16px),690px);bottom:53px}
@@ -310,14 +290,19 @@
 }
 @media(prefers-reduced-motion:reduce){.mascot.pet .layered-character{animation:none}}
 
-.bath-scene-art{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
+.bath-scene-backdrop,.bath-scene-art{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.bath-scene-backdrop{background:url('/assets/bath-foam-room.png') center/100% 100%}
+.bath-scene-art{z-index:4}
 .bath-phase-soak .actor-position,.bath-phase-soak .floor-shadow{visibility:hidden}
-.bath-phase-approach .actor-position{animation:bath-approach 1.4s linear both}
-.bath-phase-fill .activity-bath .arm-left{transform-origin:66px 54px;animation:bath-tap .65s ease-in-out 2 alternate}
-.bath-phase-fill .bath-water-surface{animation:bath-fill 2.6s ease-out both}
-.bath-stream{animation:bath-water .4s linear infinite}
-.bath-feet{transform-origin:284px 254px;animation:bath-kick .85s ease-in-out infinite alternate}
-.bath-scrub{transform-origin:253px 250px;animation:bath-scrub .75s ease-in-out infinite alternate}
+.modern .scene-walk :is(.actor-position,.floor-shadow){
+ transform-origin:50% 100%;transition:none;animation:room-floor-walk var(--walk-duration) linear var(--walk-delay,0ms) both
+}
+.scene-walk .pose-walking :is(.leg,.arm){animation-duration:.32s}
+.scene-walk .pose-walking :is(.leg-left,.arm-right){animation-delay:-.16s}
+@keyframes room-floor-walk{
+ from{transform:translateX(-50%)}
+ to{transform:translate(calc(-50% + var(--walk-x)),var(--walk-y)) scale(var(--walk-scale))}
+}
 .bath-bubble{animation:bath-bubble 1.8s ease-out infinite}
 .bath-bubble-late{animation-delay:-.8s}
 .bath-countdown{
@@ -326,30 +311,55 @@
  text-shadow:0 2px 5px #221331,0 0 9px #221331;font-size:clamp(14px,3vw,22px);
 }
 .bath-countdown span{color:#ffe08e;font-variant-numeric:tabular-nums}
-.bath-notice{
+.bath-sponge-layer,.ball-play-field{position:absolute;inset:0;z-index:7;pointer-events:none}
+.modern button.bath-sponge:not(.mascot):not(.mini-stats button),
+.modern button.scene-pass-ball:not(.mascot):not(.mini-stats button){
+ position:absolute;display:grid;place-items:center;width:48px;height:48px;padding:0;translate:-50% -50%;
+ border:0;background:none;box-shadow:none;pointer-events:auto;
+}
+.modern button.bath-sponge:not(.mascot):not(.mini-stats button){touch-action:none;cursor:grab}
+.modern button.bath-sponge[data-held=true]:not(.mascot):not(.mini-stats button){cursor:grabbing}
+.bath-sponge svg{width:42px;height:42px;pointer-events:none;filter:drop-shadow(0 2px 3px #100c23)}
+.modern button.cancel-activity:not(.mascot):not(.mini-stats button){
+ pointer-events:auto;padding:4px 9px;font-size:11px;line-height:1.3;white-space:nowrap;
+}
+.modern button.bath-finish:not(.mascot):not(.mini-stats button){
+ position:absolute;z-index:8;left:79.2%;top:29.9%;translate:-50% -100%;min-height:36px;padding:6px 12px
+}
+.bath-countdown .cancel-activity,.actor-activity .cancel-activity{margin-top:4px}
+.activity-notice{
  position:fixed;z-index:100;transform:translate(-50%,calc(-100% - 9px));
  padding:7px 10px;border:1px solid #8e81b3;border-radius:9px;background:#22213d;color:#fff;
- box-shadow:0 3px 12px #130c27aa;pointer-events:none;white-space:nowrap;font-size:12px;
+ box-shadow:0 3px 12px #130c27aa;pointer-events:none;font-size:12px;text-align:center;
+ max-width:min(270px,calc(100vw - 16px));width:max-content;
+ --notice-y:calc(-100% - 9px);--notice-end:calc(-100% - 17px);
+ animation:activity-notice-out 1.25s ease-out both;
 }
-.bath-locked button:disabled{pointer-events:none}
-@keyframes bath-approach{
+.activity-notice[data-below=true]{--notice-y:9px;--notice-end:17px}
+@keyframes activity-notice-out{
+ 0%{opacity:0;transform:translate(-50%,var(--notice-y)) scale(.94)}
+ 14%,50%{opacity:1;transform:translate(-50%,var(--notice-y))}
+ 100%{opacity:0;transform:translate(-50%,var(--notice-end))}
+}
+@media(prefers-reduced-motion:reduce){
+ .activity-notice{animation:activity-notice-fade 1.25s linear both;transform:translate(-50%,var(--notice-y))}
+}
+@keyframes activity-notice-fade{0%,50%{opacity:1}100%{opacity:0}}
+.activity-busy button:disabled{pointer-events:none}
+@keyframes toilet-approach{
  from{transform:translate(-50%,0)}
  to{transform:translate(calc(-50% + var(--x)),var(--y))}
 }
-@keyframes bath-tap{to{transform:rotate(-56deg)}}
-@keyframes bath-fill{from{opacity:0}to{opacity:.87}}
 @keyframes bath-water{to{stroke-dashoffset:-8}}
-@keyframes bath-kick{from{transform:rotate(-6deg)}to{transform:rotate(9deg) translateY(-2px)}}
-@keyframes bath-scrub{from{transform:rotate(-8deg)}to{transform:translate(7px,2px) rotate(9deg)}}
 @keyframes bath-bubble{from{opacity:0}35%{opacity:1}to{opacity:0;transform:translateY(-13px)}}
 @media(prefers-reduced-motion:reduce){
- .bath-phase-approach .actor-position,.bath-phase-fill .activity-bath .arm-left,
- .bath-phase-fill .bath-water-surface,.bath-stream,.bath-feet,.bath-scrub,.bath-bubble{animation:none}
+ .modern .scene-walk :is(.actor-position,.floor-shadow),.scene-walk .pose-walking :is(.leg,.arm),
+ .bath-bubble{animation:none}
 }
 
 .toilet-scene-art{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
 .toilet-phase-use .actor-position,.toilet-phase-use .floor-shadow{visibility:hidden}
-.toilet-phase-approach .actor-position{animation:bath-approach 1.4s linear both}
+.toilet-phase-approach .actor-position{animation:toilet-approach 1.4s linear both}
 .toilet-phase-open .activity-toilet .arm-right{transform-origin:35px 54px;animation:toilet-lift-arm 1.2s ease-out both}
 .toilet-lid{transform-origin:25px 258px}
 .toilet-lid-opening{animation:toilet-lift-lid 1.15s ease-out both}
@@ -362,3 +372,120 @@
  .toilet-phase-approach .actor-position,.toilet-phase-open .activity-toilet .arm-right,
  .toilet-lid-opening,.toilet-stream,.toilet-mosaic{animation:none}
 }
+
+
+.scene-play .scene-food-grid{width:100%;gap:clamp(12px,5vw,60px)}
+.modern .scene-play .scene-food-grid button:not(.mascot):not(.mini-stats button){
+ flex:0 1 145px;cursor:pointer;touch-action:manipulation
+}
+.scene-play .food-picture .game-icon{width:clamp(36px,8vw,60px);height:clamp(36px,8vw,60px)}
+.play-reason{display:block;margin-top:3px;font-size:10px;text-shadow:0 1px 3px #140c20}
+.scene-pass-ball{left:40%;top:77%}
+.football-icon{
+ object-fit:contain;
+ clip-path:polygon(
+  41% 0%,60% 0%,69% 3%,77% 8%,86% 15%,91% 22%,96% 29%,98% 38%,100% 43%,100% 61%,
+  97% 67%,92% 76%,87% 84%,79% 91%,72% 96%,67% 98%,60% 100%,41% 100%,35% 98%,
+  29% 96%,23% 92%,17% 87%,10% 80%,6% 74%,2% 67%,0% 61%,0% 44%,2% 38%,3% 33%,
+  6% 29%,9% 22%,14% 16%,18% 12%,22% 8%,27% 5%,32% 3%
+ );
+}
+.scene-pass-ball .football-icon{width:clamp(38px,10vw,46px);height:auto;pointer-events:none}
+.scene-pass-ball[data-phase=floor]::before{
+ content:'';position:absolute;bottom:1px;left:14%;right:14%;height:8px;background:#1a0b26b3;border-radius:50%;filter:blur(2px);z-index:-1
+}
+.scene-pass-ball[aria-disabled=true]{cursor:default}
+.ball-playing{--ball-step:0px}
+.ball-playing:has(.scene-pass-ball[data-step=left]){--ball-step:calc(-1 * var(--ball-step-size))}
+.ball-playing:has(.scene-pass-ball[data-step=right]){--ball-step:var(--ball-step-size)}
+.modern .ball-playing .actor-position.activity-ball{
+ translate:var(--ball-step) 0;transition:transform 1.2s ease-in-out,translate .28s ease-out
+}
+.ball-playing .floor-shadow{translate:var(--ball-step) 0;transition:translate .28s ease-out}
+.ball-playing .pose-ball :is(.leg,.arm){transition:transform .16s ease-out}
+.ball-playing .pose-ball .leg-left{transform-origin:57px 73px}
+.ball-playing .pose-ball .leg-right{transform-origin:43px 73px}
+.ball-playing .pose-ball .arm-right{transform-origin:34px 52px}
+.ball-playing .pose-ball .arm-left{transform-origin:66px 52px}
+.ball-playing:has(.scene-pass-ball[data-phase=returning][data-step=left]) .pose-ball .leg-right{animation:ball-side-step .28s ease-out}
+.ball-playing:has(.scene-pass-ball[data-phase=returning][data-step=right]) .pose-ball .leg-left{animation:ball-side-step .28s ease-out}
+.ball-playing:has(.scene-pass-ball[data-phase=kicking][data-foot=left]) .pose-ball .leg-left{transform:rotate(-65deg)}
+.ball-playing:has(.scene-pass-ball[data-phase=kicking][data-foot=right]) .pose-ball .leg-right{transform:rotate(62deg)}
+.ball-playing:has(.scene-pass-ball[data-phase=kicking]) .pose-ball .arm-right{transform:rotate(22deg)}
+.ball-playing:has(.scene-pass-ball[data-phase=kicking]) .pose-ball .arm-left{transform:rotate(-18deg)}
+@keyframes ball-side-step{50%{transform:translateY(-6px) rotate(-8deg)}}
+@media(prefers-reduced-motion:reduce){
+ .pose-computer .arm{animation:none}
+ .modern .ball-playing .actor-position.activity-ball,.ball-playing .floor-shadow,
+ .ball-playing .pose-ball :is(.leg,.arm){transition:none}
+ .ball-playing:has(.scene-pass-ball[data-phase=returning][data-step]) .pose-ball .leg{animation:none}
+}
+
+.admin-dialog{width:min(420px,calc(100% - 32px));max-height:min(85dvh,620px);color:#fff5fc}
+.admin-dialog::backdrop{background:#11091dd9}
+.admin-dialog input{width:116px;font-size:16px}
+.admin-dialog .time-tools{margin-top:12px;flex-wrap:wrap}
+
+/* Fitting is white; gold continues to identify the clothes being worn. */
+.modern .clothing-card{min-width:0;display:flex;flex-direction:column;gap:5px;padding:7px 4px;border:1.5px solid #535781;border-radius:16px;background:linear-gradient(155deg,#303659,#20253e);text-align:center}
+.modern .clothing-card.worn{border-color:#ffda79;background:radial-gradient(ellipse at top,#7b542e,#332b39);box-shadow:0 0 12px #ffa93d55}
+.modern .clothing-card.fitting{border-color:#fff;box-shadow:0 0 3px 1px #fff,inset 0 0 8px #ffffff2a,0 0 16px #f2efff80}
+.modern .clothing-card>span{color:#ffdc7e;font-size:11px}
+.modern .clothing-card .clothing-preview{padding:0;min-height:0;box-shadow:none;background:none;border:0;border-radius:0}
+.modern .clothing-card .clothing-preview[aria-pressed=true]{background:none}
+.modern .clothing-card .clothing-buy{font-size:10px;padding:6px 2px;min-height:0;background:linear-gradient(#fff,#c6c8dc);color:#1b2038}
+.bath-rubbing .bath-smile{animation:bath-smile 1.8s steps(1) infinite}
+.bath-surprise,.bath-lather-left,.bath-lather-right{opacity:0}
+.bath-rubbing .bath-surprise{animation:bath-surprise 1.8s steps(1) infinite}
+.bath-head-bob{animation:bath-head-bob 6s ease-in-out infinite;transform-origin:795px 480px}
+.bath-rubbing .bath-lather-left{animation:bath-lather-left 1.8s ease-in-out infinite;transform-origin:730px 532px}
+.bath-rubbing .bath-lather-right{animation:bath-lather-right 1.8s ease-in-out infinite;transform-origin:851px 533px}
+.bath-foam-crown{animation:bath-foam-pop 6s ease-in-out infinite}
+@keyframes bath-smile{0%,72%{opacity:1}42%{opacity:0}}
+@keyframes bath-surprise{0%,72%{opacity:0}42%{opacity:1}}
+@keyframes bath-head-bob{0%,100%{transform:none}34%,56%{transform:translateY(4px) rotate(-3deg)}45%,64%{transform:translateY(2px) rotate(3deg)}}
+@keyframes bath-lather-left{0%,100%{transform:rotate(-56deg);opacity:0}16%,78%{transform:rotate(-32deg);opacity:1}28%,48%,66%{transform:rotate(2deg)}38%,58%{transform:rotate(-6deg)}}
+@keyframes bath-lather-right{0%,100%{transform:rotate(56deg);opacity:0}16%,78%{transform:rotate(32deg);opacity:1}28%,48%,66%{transform:rotate(-2deg)}38%,58%{transform:rotate(6deg)}}
+@keyframes bath-foam-pop{0%,100%{opacity:.65}40%,65%{opacity:1;transform:translateY(-3px)}}
+.computer-playing .actor-position,.computer-playing .floor-shadow{visibility:hidden}
+.computer-scene{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
+.computer-arms{animation:computer-arms .3s steps(2) infinite;transform-origin:530px 700px}
+.computer-player{animation:computer-player 1.4s ease-in-out infinite}
+.computer-landscape{animation:computer-landscape 2.8s linear infinite}
+.computer-coins{animation:computer-coins 1.4s steps(1) infinite}
+@keyframes computer-arms{50%{transform:translateY(-7px) rotate(-1deg)}}
+@keyframes computer-player{50%{transform:translateY(-12px)}}
+@keyframes computer-landscape{to{transform:translateX(-26px)}}
+@keyframes computer-coins{50%{opacity:.3}}
+@media(prefers-reduced-motion:reduce){.bath-rubbing :is(.bath-smile,.bath-surprise,.bath-lather-left,.bath-lather-right),.bath-head-bob,.bath-foam-crown,.computer-arms,.computer-player,.computer-landscape,.computer-coins{animation:none}}
+.bath-smile,.bath-surprise{width:100%;height:100%;overflow:hidden}
+.computer-playing .actor-position{visibility:visible;z-index:6}
+.computer-playing .mascot,.computer-playing .actor-position>.stink-cloud,.computer-playing .screen-spark{visibility:hidden}
+.modern .wardrobe-screen .clothes-grid .clothing-preview{border:0;background:none;box-shadow:none;min-height:0;border-radius:0;padding:0}
+.modern .wardrobe-screen .clothes-grid .clothing-buy{background:linear-gradient(#fff,#c6c8dc);border-color:#edf0ff;box-shadow:0 1px 6px #fff4;color:#1b2038;min-height:0}
+.modern .wardrobe-screen .clothes-grid .clothing-buy.purchase{
+ background:linear-gradient(#86df92,#47b266);border-color:#aaf0ad;
+ box-shadow:0 1px 7px #76d98755;color:#102d1c
+}
+.modern .clothing-preview[aria-pressed=true]{background:transparent!important;border:0!important;box-shadow:none!important}
+.computer-typing{animation:computer-arms .3s steps(2) infinite;transform-origin:530px 700px}
+.zombie-game *{animation-delay:var(--game-delay)}
+.zombie-survivor{animation:zombie-survivor 2s steps(2) infinite}
+.zombie-muzzle{animation:zombie-muzzle 1s steps(1) infinite}
+.zombie-bullet{animation:zombie-bullet 1s linear infinite}
+.zombie-walk{animation:zombie-walk 6s linear infinite;animation-delay:calc(var(--game-delay) - var(--wave))}
+.zombie-hit{animation:zombie-hit 6s steps(1) infinite;animation-delay:calc(var(--game-delay) - var(--wave))}
+.zombie-legs{animation:zombie-legs .4s steps(2) infinite}
+.zombie-pixels{animation:zombie-pixels 2s steps(2) infinite}
+@keyframes zombie-survivor{50%{transform:translateY(-1px)}}
+@keyframes zombie-muzzle{0%,13%{opacity:1}14%,100%{opacity:0}}
+@keyframes zombie-bullet{0%{transform:none;opacity:1}55%{transform:translateX(19px)}56%,100%{opacity:0}}
+@keyframes zombie-walk{from{transform:translateX(7px)}to{transform:translateX(-24px)}}
+@keyframes zombie-hit{0%,78%{opacity:1}79%,100%{opacity:0}}
+@keyframes zombie-legs{50%{transform:translateX(1px)}}
+@keyframes zombie-pixels{0%,65%{opacity:0}66%{opacity:1}100%{opacity:0;transform:translate(2px,-2px)}}
+@media(prefers-reduced-motion:reduce){.computer-typing,.zombie-game *{animation:none}.zombie-muzzle,.zombie-bullet,.zombie-pixels{opacity:0}}
+/* Catalog thumbnails stay still; only the large fitting model is animated. */
+.clothes-grid .item-preview .pixel-avatar *{animation:none!important;transition:none!important}
+
+@media(max-width:445px){.modern .bottom-nav>div{gap:2px;padding:3px}.modern .bottom-nav button{font-size:clamp(8px,2.25vw,10px);letter-spacing:-.12px}.modern .bottom-nav button .game-icon{width:22px;height:22px}}

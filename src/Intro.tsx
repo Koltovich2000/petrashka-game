@@ -49,10 +49,10 @@ export function Intro({onFinish,storageError}:{onFinish:()=>void;storageError:bo
       <div className="intro-room-art"/>
       <div className="intro-petrashka"><PixelAvatar outfit={defaultOutfit}/></div>
     </div>
-    <section className="shift-card intro-dialog">
+    <section className="intro-dialog">
       <h2>Первый день в Москве</h2>
       <strong>Петрашка</strong>
-      <p>«Пора искать работу...»</p>
+      <p>«Пора обживаться.»</p>
       <p>Баланс: <strong>0 ₽</strong></p>
     </section>
     <button className="open-wardrobe intro-next" onClick={onFinish}>Начать жизнь в Москве</button>

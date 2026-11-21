@@ -2,7 +2,7 @@ export type Hit='head'|'belly'|'legs'|'right-foot'|'left-foot'|'right-arm'|'left
 // Coordinates are normalized to the upright sprite square; right/left are the character's.
 export function bodyPart(x:number,y:number):Hit|null {
  if(x<.23||x>.77||y<.02||y>1)return null;
- if(y<.46)return 'head';
+ if(y<.49)return 'head';
  if(y>.88)return x<.5?'right-foot':'left-foot';
  if(y<.76&&x<.39)return 'right-arm';
  if(y<.76&&x>.61)return 'left-arm';

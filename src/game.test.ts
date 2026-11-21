@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fresh,advance,act,parseSave,feeling,beginTutorial,feed,wake,rest,foodReason,hygieneStage,blocked,KEY} from './game';
-import {startShift,workReason,shiftCost,professions,claimSalary,applyClothing} from './economy';
-import {xpProgress,levelRequirement} from './balance';
-const leaflets=professions[0],courier=professions[1];
+import {fresh,advance,act,adoptDog,parseSave,feeling,beginTutorial,feed,wake,rest,foodReason,hygieneStage,blocked,cancelActivity,recordFloorMess,KEY} from './game';
+import {applyClothing} from './economy';
+import {TUTORIAL,xpProgress,levelRequirement} from './balance';
 test('пять нужд: точный десятиминутный тик и дробные остатки',()=>{
  const g=fresh(0);assert.equal(advance(g,599999).food,100);
  const s=advance(g,600000);assert.deepEqual([s.food,s.energy,s.mood,s.hygiene,s.health],[99,99,99.5,99.5,100]);
@@ -14,15 +13,15 @@ test('8 часов офлайн: пример из PDF',()=>{
  assert.deepEqual([s.food,s.energy,s.mood,s.hygiene],[32,42,56,56]);
 });
 test('офлайн ограничен 12 часами, повторный вход не повторяет расход',()=>{
- const s=advance(fresh(0),7*86400000,true);assert.equal(s.food,28);
- const loaded=parseSave(JSON.stringify(s),7*86400000);assert.equal(loaded.food,28);
- assert.equal(loaded.updated,7*86400000);
+ const s=advance(fresh(0),24*3600000,true);assert.equal(s.food,28);
+ const loaded=parseSave(JSON.stringify(s),24*3600000);assert.equal(loaded.food,28);
+ assert.equal(loaded.updated,24*3600000);
 });
-test('истощение: два часа отсрочки, общий штраф, офлайн пол здоровья 30',()=>{
+test('истощение: два часа отсрочки, общий штраф и экстренная госпитализация',()=>{
  const g={...fresh(0),food:0,energy:0};
  assert.equal(advance(g,7200000).health,100);assert.equal(advance(g,10800000).health,98);
- assert.equal(advance({...g,health:31},12*3600000,true).health,30);
- assert.equal(advance({...g,health:25},12*3600000,true).health,25);
+ assert.equal(advance({...g,health:31},12*3600000,true).health,11);
+ assert.equal(advance({...g,health:25},12*3600000,true).health,5);
  assert.equal(advance({...g,health:2},10800000).health,0);
 });
 test('сон без таймера: заморозка, энергия, явное пробуждение',()=>{
@@ -31,20 +30,19 @@ test('сон без таймера: заморозка, энергия, явно
  const awake=wake(s,s.updated);assert.equal(awake.sleepUntil,null);assert.equal(advance(awake,s.updated+600000).food,54);
  assert.equal(parseSave(JSON.stringify(g),8*3600000).sleepUntil,-1);
 });
-test('сон не запускается закрытием игры и не совместим с работой',()=>{
+test('сон не запускается закрытием игры и несовместим с другой активностью',()=>{
  assert.equal(parseSave(JSON.stringify(fresh(0)),600000).sleepUntil,null);
- const working=startShift(fresh(0),10,'leaflets',0);assert.equal(act(working,'sleep',0).sleepUntil,null);
- assert.equal(startShift(act(fresh(0),'sleep',0),10,'leaflets',0).economy.shift,null);
+ const playing=startActivity(fresh(0),'computer',0);
+ assert.equal(act(playing,'sleep',0).sleepUntil,null);
+ assert.equal(startActivity(act(fresh(0),'sleep',0),'computer',0).roomAction,null);
 });
 test('ограничения гигиены включают границы 50, 20 и 10',()=>{
  for(const [value,stage] of [[51,'clean'],[50,'wet'],[21,'wet'],[20,'smelly'],[11,'smelly'],[10,'accident'],[0,'accident']] as const)assert.equal(hygieneStage(value),stage);
- for(const hygiene of [50,20,10,0]){const g={...fresh(0),hygiene};assert.match(workReason(g,10,leaflets),/Мокрые штаны/);assert.equal(startShift(g,10,'leaflets',0).economy.shift,null);}
- assert.ok(startShift({...fresh(0),hygiene:51},10,'leaflets',0).economy.shift);
- assert.ok(startShift(advance(act({...fresh(0),hygiene:50},'wash',0),120000),10,'leaflets',120000).economy.shift);
 });
 test('мытьё снимает стадии постепенно, сохранение их восстанавливает',()=>{
- const g={...fresh(0),hygiene:10};const washed=advance(act(g,'wash',0),120000);assert.equal(hygieneStage(washed.hygiene),'wet');
- const clean=advance(act(washed,'wash',120000),240000);assert.equal(hygieneStage(clean.hygiene),'clean');
+ const g={...fresh(0),hygiene:10},bath=act(g,'wash',0);
+ const washed=scrubTimes(bath,40,120_000);assert.equal(hygieneStage(washed.hygiene),'wet');
+ const clean=scrubTimes(washed,1,240_000);assert.equal(hygieneStage(clean.hygiene),'clean');
  assert.equal(parseSave(JSON.stringify(g),0).hygiene,10);
 });
 test('цены и эффекты еды, нет отрицательного баланса',()=>{
@@ -57,50 +55,49 @@ test('защита от тупика: бесплатная еда, душ и о�
  let g={...fresh(0),food:0,energy:0,hygiene:0};g=feed(g,'free',0);assert.equal(g.food,25);
  assert.equal(feed(g,'free',60000).cares,1);assert.match(foodReason(advance(g,60000),'free'),/Помощь/);
  const resting=rest(g,0),done=advance(resting,600000);assert.equal(done.energy,10);assert.equal(done.food,23);
- assert.equal(advance(done,600001).energy,10);assert.equal(advance(act(done,'wash',600000),720000).hygiene,40);
+ assert.equal(advance(done,600001).energy,10);assert.equal(scrubTimes(act(done,'wash',600_000),40,720_000).hygiene,40);
 });
-test('профессии используют основную таблицу и формулу голода',()=>{
- assert.equal(shiftCost({...fresh(0),food:25},courier,10).energy,14);
- assert.deepEqual(shiftCost(fresh(0),courier,10),{energy:12,food:8,hygiene:5,mood:2});
- assert.match(workReason({...fresh(0),energy:12},10,leaflets),/Не хватает 1 энергии/);
- assert.equal(startShift({...fresh(0),energy:12},10,'leaflets',0).economy.shift,null);
-});
-test('смена списывает ресурсы один раз и не удваивает фон',()=>{
- const started=startShift(fresh(0),10,'leaflets',0);assert.deepEqual([started.food,started.energy,started.hygiene,started.mood],[96,92,98,99]);
- assert.equal(startShift(started,10,'leaflets',1).food,96);
- const done=advance(started,600000);assert.equal(done.food,96);assert.equal(done.economy.balance,200);assert.equal(done.economy.shift,null);
- assert.equal(advance(done,1200000).food,95);assert.equal(claimSalary(done,600000).economy.balance,200);
-});
-test('работа через офлайн и граница перехода к бодрствованию',()=>{
- const g=startShift(fresh(0),10,'leaflets',0),s=parseSave(JSON.stringify(g),1200000);
- assert.equal(s.economy.balance,200);assert.equal(s.food,95);assert.equal(s.economy.xp,16);
- assert.equal(parseSave(JSON.stringify(s),1200000).economy.balance,200);
-});
-test('обучение: 5 реальных событий, точные награды и перезапуск на шаге 3',()=>{
- let g=beginTutorial(0);assert.equal(advance(g,86400000,true).food,55);
- assert.ok(blocked(g,'wash'));g=feed(g,'free',0);assert.equal(g.food,80);assert.equal(g.economy.xp,15);assert.equal(g.tutorial,1);
- assert.equal(feed(g,'free',0).economy.xp,15);
- g=startShift(g,10,'leaflets',0);assert.equal(g.economy.shift?.ends,15000);
- assert.equal(advance(g,14999).economy.balance,0);
- g=parseSave(JSON.stringify(g),15000);assert.equal(g.tutorial,2);assert.equal(g.economy.balance,250);assert.equal(g.economy.xp,45);
- g=parseSave(JSON.stringify(g),15000);assert.equal(g.economy.balance,250);
- g=feed(g,'noodles',15000);assert.equal(g.economy.balance,150);assert.equal(g.food,100);assert.equal(g.economy.xp,60);
- g=advance(act(g,'wash',15000),135000);assert.equal(g.hygiene,100);assert.equal(g.economy.xp,75);
- g=act(g,'sleep',135000);assert.equal(g.tutorial,5);assert.equal(g.economy.balance,250);assert.equal(g.economy.xp,100);assert.equal(xpProgress(g.economy.xp).level,2);assert.equal(g.sleepUntil,-1);
- assert.equal(act(g,'sleep',136000).economy.balance,250);
+test('обучение из четырёх шагов даёт 2 уровень и 250 ₽',()=>{
+ let g=beginTutorial(0);
+ assert.ok(blocked(g,'wash'));
+ g=feed(g,'free',0);
+ assert.deepEqual([g.food,g.tutorial,g.economy.xp,g.economy.balance],[80,TUTORIAL.noodles,45,250]);
+ g=parseSave(JSON.stringify(g),15000);
+ g=feed(g,'noodles',15000);
+ assert.deepEqual([g.economy.balance,g.food,g.economy.xp],[150,100,60]);
+ g=scrubTimes(act(g,'wash',15_000),100,135_000);
+ assert.equal(g.economy.xp,75);
+ g=act(cancelActivity(g,135_000),'sleep',135000);
+ assert.deepEqual([g.tutorial,g.economy.balance,g.economy.xp,g.sleepUntil],[TUTORIAL.done,250,100,-1]);
+ assert.equal(xpProgress(g.economy.xp).level,2);
  assert.equal(parseSave(JSON.stringify(g),86400000).economy.xp,100);
 });
 test('кривая опыта и лимит 20 уровней',()=>{
  assert.equal(levelRequirement(2),128);assert.equal(levelRequirement(5),248);
  assert.deepEqual(xpProgress(100),{level:2,progress:0,required:128,max:false});assert.equal(xpProgress(228).level,3);assert.equal(xpProgress(1e12).level,20);
 });
-test('миграция версии 2 сохраняет деньги, нужды, текущую смену и достигнутый уровень',()=>{
- const old={...fresh(0),version:2,tutorial:undefined,food:55,economy:{balance:777,xp:250,completedJobs:['courier'],jobId:'courier',shift:{id:'old',profession:'courier',minutes:15,started:0,ends:900000,pay:125},lastClaimed:null}};
- const g=parseSave(JSON.stringify(old),0);assert.equal(g.version,3);assert.equal(g.tutorial,5);assert.equal(g.food,55);assert.equal(g.economy.balance,777);assert.equal(xpProgress(g.economy.xp).level,3);
- assert.equal(advance(g,900000).economy.balance,902);assert.equal(KEY,'petrashka:v1');
+test('при удалении карьеры расчёт прошлого занятия выполняется один раз',()=>{
+ const old={...fresh(0),version:2,tutorial:undefined,food:55,economy:{balance:777,xp:250,shift:{id:'old',minutes:15,started:0,ends:900000,pay:125}}};
+ const g=parseSave(JSON.stringify(old),0);
+ assert.deepEqual([g.version,g.tutorial,g.food,g.economy.balance],[4,TUTORIAL.done,55,902]);
+ assert.equal(xpProgress(g.economy.xp).level,3);
+ assert.deepEqual(parseSave(JSON.stringify(g),900000).economy,g.economy);
+ assert.equal(KEY,'petrashka:v1');
+
+ const stopped={...beginTutorial(0),version:3,tutorial:1,economy:{balance:0,xp:15}};
+ const migrated=parseSave(JSON.stringify(stopped),0);
+ assert.deepEqual([migrated.tutorial,migrated.economy.balance,migrated.economy.xp],[TUTORIAL.noodles,250,45]);
+ assert.deepEqual(parseSave(JSON.stringify(migrated),10).economy,migrated.economy);
+
+ const study={...fresh(0),version:3,tutorial:5,study:{course:'book',skill:'fitness',started:0,ends:600_000}};
+ const earned=parseSave(JSON.stringify(study),0);
+ assert.equal(earned.fitnessXP,2);assert.equal(earned.economy.xp,12);assert.ok(!('study' in earned));
 });
-test('смерть не отменяется ни сном ни бесплатной помощью',()=>{
- const g={...fresh(0),health:0};assert.equal(feeling(g),'faint');assert.equal(act(g,'heal',0).health,0);assert.equal(feed(g,'free',0).cares,0);assert.equal(advance(g,86400000,true).health,0);
+test('сон и бесплатная помощь недоступны в больнице',()=>{
+ const g=advance({...fresh(0),health:0},0);
+ assert.equal(g.hospital?.status,'hospitalized');
+ assert.equal(act(g,'heal',0).health,0);assert.equal(feed(g,'free',0).cares,0);
+ assert.equal(advance(g,86400000,true).hospital?.cost,2400);
 });
 test('покупки не позволяют потратить деньги учебной лапши',()=>{
  const g={...beginTutorial(0),economy:{...fresh(0).economy,balance:500}};assert.equal(applyClothing(g,'hat',1),g);
@@ -111,33 +108,199 @@ test('онлайн расчёт одинаков при разной часто�
  assert.deepEqual(live,advance(g,14400000));
 });
 
-import {buyFurniture,moveFurniture,startActivity,activityReason,gameDate,furnitureCatalog} from './activities';
-import {starterCloset,savePreset,wearPreset,renamePreset,deletePreset,defaultOutfit,catalog,categories,parseOutfit} from './wardrobe';
+import {buyFurniture,moveFurniture,startActivity,activityReason,activityLocation,gameDate,furnitureCatalog,scrubBath,returnBall,BATH_READY_AT} from './activities';
+import {advanceBathStroke,type BathStroke} from './bathScrub';
+import {yogaFrame,yogaPoseAt,yogaPoseDuration,yogaPoses,yogaSetupDuration} from './yoga';
+import {roomLighting} from './roomLighting';
+function scrubTimes(g:ReturnType<typeof fresh>,count:number,now:number){
+ for(let stroke=0;stroke<count&&g.roomAction?.kind==='bath';stroke++)g=scrubBath(g,g.roomAction.id,now);
+ return g;
+}
+import {starterCloset,savePreset,wearPreset,renamePreset,deletePreset,defaultOutfit,wardrobeItems,categoryKeys,parseOutfit} from './wardrobe';
+import {hairWetness} from './hair';
 const rich=()=>({...fresh(0),economy:{...fresh(0).economy,balance:100000,xp:5000}});
+test('освещение меняется по московскому времени на границах расписания',()=>{
+ const expected=[
+  ['05:29','night'],['05:30','morning'],['06:59','morning'],['07:00','day'],
+  ['11:59','day'],['12:00','golden'],['13:59','golden'],['14:00','sunset'],
+  ['14:59','sunset'],['15:00','night'],['21:00','night'],
+ ];
+ for(const [clock,lighting] of expected){
+  assert.equal(roomLighting(Date.parse(`2026-11-20T${clock}:00Z`)),lighting);
+ }
+ assert.equal(roomLighting(Date.parse('2026-11-20T17:00:00+03:00')),roomLighting(Date.parse('2026-11-20T09:00:00-05:00')));
+});
+test('йога переносит купленный коврик в зал и сохраняет случайную последовательность',()=>{
+ const game=moveFurniture(buyFurniture(rich(),'yoga'),'yoga',.26,.88);
+ assert.equal(furnitureCatalog.find(item=>item.id==='yoga')?.location,'hall');
+ const started=startActivity(game,'yoga',0);
+ assert.equal(started.roomAction?.kind,'yoga');
+ if(started.roomAction?.kind!=='yoga')return;
+ const action=started.roomAction;
+ const resumed=parseSave(JSON.stringify(started),45_000);
+ assert.equal(activityLocation(action),'hall');
+ assert.deepEqual(resumed.furniture.yoga,{x:.26,y:.88});
+ assert.deepEqual(resumed.roomAction,action);
+ assert.equal(yogaFrame(0,action.yogaSeed).phase,'walk-to-mat');
+ assert.equal(yogaFrame(yogaSetupDuration-1,action.yogaSeed).phase,'unroll');
+ for(let block=0;block<3;block++){
+  const poses=Array.from({length:3},(_,i)=>yogaPoseAt(action.yogaSeed,block*3+i));
+  assert.deepEqual(new Set(poses),new Set(yogaPoses));
+  if(block)assert.notEqual(poses[0],yogaPoseAt(action.yogaSeed,block*3-1));
+ }
+ const first=yogaFrame(yogaSetupDuration,action.yogaSeed);
+ assert.equal(yogaFrame(yogaSetupDuration+yogaPoseDuration-1,action.yogaSeed).pose,first.pose);
+ assert.notEqual(yogaFrame(yogaSetupDuration+yogaPoseDuration,action.yogaSeed).pose,first.pose);
+ const legacy={...started,roomAction:{id:action.id,kind:action.kind,started:action.started,ends:action.ends,bonus:action.bonus}};
+ assert.equal(parseSave(JSON.stringify(legacy),1000).roomAction?.kind,'yoga');
+});
 test('мебель: покупка каждого предмета ровно один раз и сохранение',()=>{
- let g=rich();for(const i of furnitureCatalog){const before=g.economy.balance;g=buyFurniture(g,i.id);assert.equal(g.economy.balance,before-i.price);assert.equal(buyFurniture(g,i.id),g);assert.ok(parseSave(JSON.stringify(g),0).furniture[i.id]);}
+ let g=adoptDog(rich());for(const i of furnitureCatalog){const before=g.economy.balance;g=buyFurniture(g,i.id);assert.equal(g.economy.balance,before-i.price);assert.equal(buyFurniture(g,i.id),g);assert.ok(parseSave(JSON.stringify(g),0).furniture[i.id]);}
  assert.equal(buyFurniture(fresh(0),'yoga').furniture.yoga,undefined);
  assert.equal(buyFurniture({...rich(),economy:{...rich().economy,balance:0}},'yoga').furniture.yoga,undefined);
 });
 test('мебель: расстановка ограничена полом и не изменяет чужие предметы',()=>{
- let g=buyFurniture(rich(),'yoga');g=moveFurniture(g,'yoga',-10,100);assert.deepEqual(g.furniture.yoga,{x:.32,y:.90});
+ let g=buyFurniture(rich(),'yoga');g=moveFurniture(g,'yoga',-10,100);assert.deepEqual(g.furniture.yoga,{x:.2,y:.90});
  assert.deepEqual(parseSave(JSON.stringify(g),0).furniture,g.furniture);assert.equal(moveFurniture(g,'tray',1,1),g);
 });
-test('ванна: 2 минуты, бонус один раз, при полном показателе бонусов нет',()=>{
+test('собака сохраняется, а покупка лотка доступна только после её появления',()=>{
+ const initial=rich();
+ assert.equal(buyFurniture(initial,'tray'),initial);
+ const adopted=adoptDog(initial);
+ assert.equal(adopted.economy.balance,initial.economy.balance);
+ assert.equal(adoptDog(adopted),adopted);
+ const restored=parseSave(JSON.stringify(adopted),0);
+ assert.equal(restored.dog,true);
+ assert.deepEqual(buyFurniture(restored,'tray').furniture.tray,{x:.29,y:.77});
+ const legacy=parseSave(JSON.stringify({...initial,dog:undefined,furniture:{tray:{x:.5,y:.88},dumbbells:{x:.68,y:.89}}}),0);
+ assert.equal(legacy.dog,false);
+ assert.deepEqual(legacy.furniture.tray,{x:.34,y:.80});
+ assert.deepEqual(legacy.furniture.dumbbells,{x:.72,y:.80});
+ const workout=startActivity(legacy,'dumbbells',0);
+ assert.equal(activityLocation(workout.roomAction!),'hall');
+});
+test('мочалка засчитывает только завершённое движение туда и обратно',()=>{
+ const stroke:BathStroke={start:{x:0,y:0},direction:null,peak:0};
+ const move=(x:number,y=0)=>advanceBathStroke(stroke,{x,y},20);
+ assert.equal(move(12),false);
+ assert.equal(move(24),false);
+ assert.equal(move(60),false);
+ assert.equal(move(53),false);
+ assert.equal(move(54,24),false);
+ assert.equal(move(30,24),true);
+ assert.equal(move(28,24),false);
+ assert.equal(move(30,80),false);
+ assert.equal(move(30,42),true);
+});
+test('ванна: +1 гигиены за движение, можно начать и продолжать при 100%',()=>{
  const g={...fresh(0),hygiene:30,mood:50,energy:1},start=startActivity(g,'bath',0);
- assert.equal(start.energy,0);assert.equal(start.hygiene,30);assert.equal(startActivity(start,'toilet',0).roomAction?.kind,'bath');
- assert.equal(advance(start,119999).hygiene,30);const done=advance(start,120000);assert.equal(done.hygiene,70);assert.equal(done.mood,54);assert.equal(done.food,100);
- assert.equal(advance(done,120001).mood,54);assert.equal(startActivity(fresh(0),'bath',0).roomAction,null);
- assert.equal(startShift(start,10,'leaflets',0).economy.shift,null);assert.equal(act(start,'pet',0).mood,50);
+ const id=start.roomAction!.id;
+ assert.equal(start.energy,0);assert.equal(start.hygiene,30);assert.equal(start.roomAction?.ends,null);
+ assert.equal(startActivity(start,'toilet',0).roomAction?.kind,'bath');
+ assert.equal(scrubBath(start,id,BATH_READY_AT-1).hygiene,30);
+ assert.equal(scrubBath(start,'another-bath',BATH_READY_AT).hygiene,30);
+ assert.equal(advance(start,600_000).hygiene,29.5);
+ assert.equal(advance(start,600_000).roomAction?.kind,'bath');
+ const first=scrubBath(start,id,BATH_READY_AT);
+ assert.deepEqual([first.hygiene,first.mood],[31,50]);
+ const resumed=parseSave(JSON.stringify(first),120_000);
+ assert.equal(resumed.hygiene,31);assert.equal(resumed.roomAction?.kind,'bath');
+ const full=scrubTimes(resumed,75,120_000);
+ assert.deepEqual([full.hygiene,full.mood,full.roomAction?.id],[100,50,id]);
+ assert.equal(scrubBath(full,id,120_100).roomAction?.kind,'bath');
+ assert.equal(cancelActivity(full,120_100).hygiene,100);
+ assert.equal(startActivity(fresh(0),'bath',0).roomAction?.kind,'bath');
+ assert.equal(act(start,'pet',0).mood,50);
+});
+test('отмена ванны сохраняет полученную гигиену, компьютер сохраняет прежнюю оплату',()=>{
+ const initial={...fresh(0),hygiene:40,mood:50,tutorial:TUTORIAL.bath};
+ const bath=startActivity(initial,'bath',0);
+ const id=bath.roomAction!.id;
+ const cancelled=cancelActivity(scrubBath(bath,id,BATH_READY_AT),119999);
+ assert.equal(cancelled.roomAction,null);
+ assert.deepEqual([cancelled.energy,cancelled.hygiene,cancelled.mood,cancelled.tutorial],[98,41,50,TUTORIAL.bath]);
+ assert.equal(parseSave(JSON.stringify(cancelled),120000).tutorial,TUTORIAL.bath);
+ const done=scrubTimes(bath,70,120_000);
+ assert.equal(done.hygiene,100);
+ assert.equal(done.tutorial,TUTORIAL.sleep);
+ assert.equal(done.economy.xp,15);
+ assert.equal(done.roomAction?.kind,'bath');
+ assert.equal(cancelActivity(done,120_000).roomAction,null);
+
+ const computer=startActivity({...initial,tutorial:TUTORIAL.done},'computer',0);
+ const afterReload=parseSave(JSON.stringify(cancelActivity(computer,1000)),600000);
+ assert.equal(afterReload.roomAction,null);
+ assert.deepEqual(afterReload.economy,{balance:0,xp:0});
+ assert.deepEqual([afterReload.energy,afterReload.food,afterReload.hygiene,afterReload.mood],[90,96,39,50]);
+});
+test('какашки сохраняются в своей комнате после мытья и перезагрузки',()=>{
+ const dirty=recordFloorMess({...fresh(0),hygiene:10},'hallway');
+ assert.deepEqual(recordFloorMess(dirty,'bathroom').floorMess,{hallway:true});
+ const bathing=scrubTimes(startActivity(dirty,'bath',0),40,BATH_READY_AT);
+ const washed=recordFloorMess(cancelActivity(bathing,BATH_READY_AT),'bathroom');
+ assert.equal(washed.hygiene,50);
+ assert.deepEqual(parseSave(JSON.stringify(washed),120_000).floorMess,{hallway:true});
+ assert.deepEqual(recordFloorMess({...washed,hygiene:10},'room').floorMess,{hallway:true,room:true});
+});
+
+test('уборка убирает только выбранную кучку и не повторяет происшествие при низкой гигиене',()=>{
+ const dirty={...recordFloorMess({...fresh(0),hygiene:10},'bathroom'),floorMess:{bathroom:true,room:true} as const};
+ assert.equal(startActivity(dirty,'clean',0,'hallway').roomAction,null);
+ const started=startActivity(dirty,'clean',0,'bathroom');
+ assert.equal(parseSave(JSON.stringify(started),1000).roomAction?.cleanupLocation,'bathroom');
+ assert.deepEqual(cancelActivity(started,1000).floorMess,dirty.floorMess);
+ const cleaned=parseSave(JSON.stringify(started),3000);
+ assert.deepEqual(cleaned.floorMess,{room:true});
+ assert.deepEqual(recordFloorMess(cleaned,'bathroom').floorMess,{room:true});
+ assert.deepEqual([cleaned.hygiene,cleaned.mood,cleaned.energy,cleaned.cares],[10,100,100,0]);
 });
 test('компьютер: ресурсы, 10 минут, офлайн и точное завершение',()=>{
  const g={...fresh(0),mood:30};const started=startActivity(g,'computer',0);assert.deepEqual([started.energy,started.food,started.hygiene],[90,96,99]);
  const done=parseSave(JSON.stringify(started),600000);assert.equal(done.mood,42);assert.equal(done.roomAction,null);assert.equal(done.food,96);
- assert.equal(parseSave(JSON.stringify(done),600000).mood,42);assert.equal(act(started,'sleep',0).sleepUntil,null);
+ assert.deepEqual(done.economy,{balance:200,xp:16});assert.deepEqual(parseSave(JSON.stringify(done),600000).economy,done.economy);assert.equal(act(started,'sleep',0).sleepUntil,null);
  assert.match(activityReason({...g,energy:14},'computer'),/15 энергии/);assert.match(activityReason({...g,food:9},'computer'),/10 сытости/);
 });
+test('мяч в прихожей: +1 за возврат без лимита, сохранение счёта и перезарядки',()=>{
+ const initial={...fresh(0),mood:97};
+ const started=startActivity(initial,'ball',0);
+ assert.equal(started.energy,90);
+ assert.equal(started.mood,97);
+ assert.equal(started.roomAction?.ends,null);
+ const id=started.roomAction!.id;
+ const once=returnBall(started,id,10_000);
+ const resumed=parseSave(JSON.stringify(once),18_000);
+ assert.equal(resumed.roomAction?.kind==='ball'&&resumed.roomAction.returns,1);
+ assert.equal(resumed.mood,98);
+ const twice=returnBall(resumed,id,19_000);
+ assert.equal(returnBall(twice,'old-ball',19_500).mood,99);
+ const third=returnBall(twice,id,20_000);
+ assert.equal(third.mood,100);
+ const fourth=returnBall(third,id,21_000);
+ assert.equal(fourth.mood,100);
+ const continued=parseSave(JSON.stringify(fourth),22_000);
+ assert.equal(continued.roomAction?.kind==='ball'&&continued.roomAction.returns,4);
+ const done=cancelActivity(continued,22_000);
+ assert.equal(done.roomAction,null);
+ assert.equal(done.mood,100);
+ assert.equal(done.energy,90);
+ assert.equal(startActivity(done,'ball',29999).roomAction,null);
+ assert.equal(startActivity(done,'ball',30000).roomAction?.kind,'ball');
+ assert.equal(startActivity({...initial,energy:9},'ball',0).roomAction,null);
+ assert.equal(startActivity({...initial,tutorial:3},'ball',0).roomAction,null);
+});
+test('сохранения с прежним таймером ванны и мяча продолжаются вручную',()=>{
+ const initial={...fresh(0),hygiene:20,mood:40};
+ for(const [kind,ends] of [['bath',120_000],['ball',15_000]] as const){
+  const legacy={...initial,roomAction:{kind,started:0,ends,id:'existing',bonus:true}};
+  const resumed=parseSave(JSON.stringify(legacy),180_000);
+  assert.equal(resumed.roomAction?.kind,kind);
+  assert.equal(resumed.roomAction?.ends,null);
+  assert.equal(resumed.hygiene,20);
+  assert.equal(resumed.mood,40);
+ }
+});
 test('унитаз и лоток: общий 90-минутный кулдаун бонуса',()=>{
- let g={...buyFurniture(rich(),'tray'),mood:10};g=advance(startActivity(g,'toilet',0),60000);assert.equal(g.mood,14);
+ let g={...buyFurniture(adoptDog(rich()),'tray'),mood:10};g=advance(startActivity(g,'toilet',0),60000);assert.equal(g.mood,14);
  g=advance(startActivity(g,'tray',60000),120000);assert.equal(g.mood,14);assert.equal(g.hygiene,88);
  const ready={...g,updated:g.toiletBonusAt};const next=advance(startActivity(ready,'tray',ready.updated),ready.updated+60000);assert.equal(next.mood,24);assert.equal(next.hygiene,76);
 });
@@ -156,45 +319,52 @@ test('3 бесплатных образа: сохранить, надеть, о�
  c=deletePreset(c,first);assert.equal(c.presets.length,2);assert.equal(c.activePreset,null);
 });
 test('существующие вещи, покупка и наряд не теряются после добавления пресетов',()=>{
- for(const k of Object.keys(categories) as (keyof typeof categories)[])assert.equal(catalog[k].length,10);
- let g=applyClothing(rich(),'hat',1);g={...g,closet:savePreset(g.closet!,'Шапка')};const price=g.economy.balance;
+ let g=applyClothing(rich(),'hat',6);g={...g,closet:savePreset(g.closet!,'Шлем')};const price=g.economy.balance;
  g=applyClothing(g,'hat',-1);g={...g,closet:wearPreset(g.closet!,g.closet!.presets[0].id)};
- assert.equal(g.closet!.outfit.hat,1);assert.equal(g.economy.balance,price);assert.equal(parseSave(JSON.stringify(g),0).closet!.presets.length,1);
+ assert.equal(g.closet!.outfit.hat,6);assert.equal(g.economy.balance,price);assert.equal(parseSave(JSON.stringify(g),0).closet!.presets.length,1);
  assert.deepEqual(parseOutfit('broken'),defaultOutfit);
+});
+test('убранные вещи нельзя примерить или купить, старые покупки и остальные слоты сохраняются',()=>{
+ assert.deepEqual(categoryKeys.map(key=>wardrobeItems(key).map(item=>item.index)),[
+  [0,1,2,5,6],[0,2,6,7,8],[0,1,2,3,9],[6,7],[1,3,5,6,8]
+ ]);
+ const base=applyClothing(rich(),'shoes',3);
+ const outfit={...base.closet!.outfit,top:3,hat:1};
+ const closet=savePreset({...base.closet!,outfit,owned:{...base.closet!.owned,top:[0,3],hat:[1]},
+  paid:{...base.closet!.paid,top:{3:200},hat:{1:120}}},'Старый наряд');
+ const old={...base,closet};
+ assert.equal(applyClothing(base,'top',3),base);
+ assert.equal(applyClothing(old,'hat',1),old);
+ for(const saved of [parseSave(JSON.stringify(old),0),advance(old,0)]){
+  const updated=saved.closet!;
+  const replacement={...defaultOutfit,shoes:3};
+  assert.deepEqual(updated.outfit,replacement);
+  assert.deepEqual(updated.presets[0].outfit,replacement);
+  assert.deepEqual(updated.paid,closet.paid);
+  assert.deepEqual(updated.owned,closet.owned);
+  assert.equal(saved.economy.balance,base.economy.balance);
+ }
+});
+test('после ванны волосы сохнут четырьмя фазами по 15 минут, включая время вне игры',()=>{
+ const bath=startActivity(rich(),'bath',0);
+ assert.equal(hairWetness(cancelActivity(bath,100)),0);
+ const finished=cancelActivity(bath,1000);
+ assert.equal(finished.roomAction,null);
+ assert.equal(finished.hairWashedAt,1000);
+ for(const [minutes,phase] of [[0,4],[14,4],[15,3],[30,2],[45,1],[59,1],[60,0]]){
+  const loaded=parseSave(JSON.stringify(finished),1000+minutes*60_000);
+  assert.equal(hairWetness(loaded),phase);
+ }
+ const nextBath=startActivity(finished,'bath',3_601_000);
+ assert.equal(hairWetness(cancelActivity(nextBath,3_602_000)),4);
 });
 import {bodyPart} from './body';
 test('области тела продолжают различать голову, живот, ноги, руки и ступни',()=>{assert.equal(bodyPart(.5,.25),'head');assert.equal(bodyPart(.5,.6),'belly');assert.equal(bodyPart(.5,.8),'legs');assert.equal(bodyPart(.32,.6),'right-arm');assert.equal(bodyPart(.68,.6),'left-arm');assert.equal(bodyPart(.43,.95),'right-foot');assert.equal(bodyPart(.57,.95),'left-foot');});
 
-import {startStudy, skillValue} from './study';
 import {buyBed, openBusiness, businessIncome, collectBusiness} from './property';
-
-test('курс после уровня 2 восстанавливается из сохранения и выдаёт награду один раз', () => {
- const base = fresh(0);
- assert.equal(startStudy(base, 'book', 'communication', 0).study, null);
- const ready = {...base, mood: 29, economy: {...base.economy, xp: 100}};
- const started = startStudy(ready, 'book', 'communication', 0);
- assert.equal(started.study?.ends, 720_000);
- assert.deepEqual([started.energy, started.food, started.mood], [95, 98, 28]);
- assert.equal(startShift(started, 10, 'leaflets', 1).economy.shift, null);
- assert.equal(act(started, 'sleep', 1).sleepUntil, null);
- const loaded = parseSave(JSON.stringify(started), 600_000);
- assert.ok(loaded.study);
- const finished = parseSave(JSON.stringify(loaded), 720_000);
- assert.equal(finished.study, null);
- assert.equal(finished.food, 98);
- assert.equal(skillValue(finished, 'communication'), 2);
- assert.equal(finished.economy.xp, 112);
- assert.equal(parseSave(JSON.stringify(finished), 720_000).economy.xp, 112);
-});
-
-test('профессия требует навык, а скидка энергии ограничена 20%', () => {
- const base = rich();
- const cashier = professions.find(job => job.id === 'cashier')!;
- const player = {...base, economy: {...base.economy, completedJobs: ['courier']}};
- assert.match(workReason(player, 10, cashier), /Общение/);
- const trained = {...player, learnedSkills: {...player.learnedSkills, communication: 100}};
- assert.equal(workReason(trained, 10, cashier), '');
- assert.equal(shiftCost(trained, cashier, 10).energy, 10);
+test('отмена отдыха пропускает награду',()=>{
+ const ready={...fresh(0),energy:80};
+ assert.equal(advance(cancelActivity(rest(ready,0),1000),600000).energy,80);
 });
 
 test('кровать списывает цену один раз и ускоряет сон после загрузки', () => {
@@ -239,4 +409,57 @@ test('случайный вариант посещения туалета сох
  const restored = parseSave(JSON.stringify(started),30_000);
  assert.equal(restored.roomAction?.toiletVisit,started.roomAction?.toiletVisit);
  assert.equal(advance(restored,60_000).roomAction,null);
+});
+
+import {advanceDogCare,dogMessInterval,dogVisitAt,newDogCare} from './dogSchedule';
+import {dogPointAt,dogRoute,measureDogRoute} from './dogNavigation';
+import {runGameCommand} from './gameCommands';
+
+test('собака оставляет одну кучку за каждые 12 часов, в которых она живёт дома',()=>{
+ const care={...newDogCare(0),seed:1234};
+ const after=advanceDogCare(care,4*dogMessInterval-1);
+ assert.equal(after.nextWindow,4);
+ assert.equal(after.messes.length,4);
+ after.messes.forEach((mess,index)=>{
+  assert.equal(Math.floor(mess.at/dogMessInterval),index);
+  assert.equal(mess.location,dogVisitAt(mess.at).location);
+ });
+ assert.equal(advanceDogCare(after,4*dogMessInterval-1),after);
+ const saved=parseSave(JSON.stringify({...fresh(0),dog:true,dogCare:after,updated:4*dogMessInterval-1}),4*dogMessInterval-1);
+ assert.deepEqual(saved.dogCare,after);
+ assert.ok(parseSave(JSON.stringify({...fresh(0),dog:true}),0).dogCare);
+});
+
+test('уборка собачьей кучки удаляет только выбранную, включая продолжение после загрузки',()=>{
+ const state=advanceDogCare({...newDogCare(0),seed:1234},4*dogMessInterval-1);
+ const item=state.messes[0],now=4*dogMessInterval-1;
+ const game={...fresh(now),dog:true,dogCare:state,floorMess:{[item.location]:true}};
+ assert.equal(startActivity(game,'clean',now,item.location,item.at+1).roomAction,null);
+ const cleaning=startActivity(game,'clean',now,item.location,item.at);
+ assert.equal(cleaning.roomAction?.cleanupDogMessAt,item.at);
+ const after=parseSave(JSON.stringify(cleaning),now+3000);
+ assert.equal(after.dogCare?.messes.some(mess=>mess.at===item.at),false);
+ assert.equal(after.dogCare?.messes.length,3);
+ assert.equal(after.floorMess[item.location],true);
+});
+
+test('собака проходит по глубине и ширине свободного пола и обходит мебель',()=>{
+ const furniture=[{left:.45,right:.53,top:.565,bottom:.83},{left:.68,right:.75,top:.78,bottom:.85}];
+ const points=dogRoute('hall',furniture,390,630,13,false);
+ const route=measureDogRoute(points,390,630);
+ assert.ok(route.length>550);
+ assert.ok(Math.max(...points.map(point=>point.y))-Math.min(...points.map(point=>point.y))>.25);
+ for(let i=0;i<=600;i++){
+  const point=dogPointAt(route,i/600);
+  assert.ok(furniture.every(rect=>point.x<rect.left||point.x>rect.right||point.y<rect.top||point.y>rect.bottom));
+ }
+});
+
+test('изменения админ-панели применяются только для авторизованного администратора',()=>{
+ const start=fresh(0);
+ const admin={kind:'admin',values:{mood:46,balance:1729}} as const;
+ assert.deepEqual(runGameCommand(start,admin,0,'room'),start);
+ const updated=runGameCommand(start,admin,0,'room',true);
+ assert.equal(updated.mood,46);
+ assert.equal(updated.economy.balance,1729);
 });

@@ -8,6 +8,7 @@ interface WebApp {
  setHeaderColor(color: string): void;
  setBackgroundColor(color: string): void;
  disableVerticalSwipes?(): void;
+ openInvoice?(url: string, callback: (status: 'paid' | 'cancelled' | 'failed' | 'pending') => void): void;
  onEvent(event: LifecycleEvent, callback: () => void): void;
  offEvent(event: LifecycleEvent, callback: () => void): void;
  HapticFeedback?: {impactOccurred(style: 'light'): void};
@@ -44,7 +45,41 @@ export function onTelegramLifecycle(activate: () => void, deactivate: () => void
  };
 }
 
-export async function authenticateTelegram(signal: AbortSignal): Promise<string> {
+export type TelegramProfile = {id:string;isAdmin:boolean;gameToken:string};
+
+export function giftPaymentAvailable() {
+ return Boolean(telegram?.initData && telegram.openInvoice && telegram.isVersionAtLeast('6.1'));
+}
+
+export async function giftPaymentRequest<T>(path:string, body:Record<string, unknown>) {
+ const controller = new AbortController();
+ const timeout = window.setTimeout(() => controller.abort(),12_000);
+ try {
+  const response = await fetch(path,{
+   method:'POST', headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({...body,initData:telegram?.initData}),
+   signal:controller.signal,
+  });
+  if (response.status === 401) throw new Error('Сессия устарела. Откройте игру заново через Telegram.');
+  if (!response.ok) throw new Error('Сервис оплаты недоступен. Попробуйте позже.');
+  return await response.json() as T;
+ } catch (error) {
+  if (controller.signal.aborted || error instanceof TypeError || error instanceof SyntaxError) {
+   throw new Error('Не удалось связаться с сервисом оплаты. Попробуйте позже.');
+  }
+  throw error;
+ } finally {
+  window.clearTimeout(timeout);
+ }
+}
+
+export function openGiftInvoice(url:string) {
+ const app = telegram;
+ if (!giftPaymentAvailable() || !app?.openInvoice) throw new Error('Откройте игру в Telegram, чтобы подарить подарок.');
+ return new Promise<'paid' | 'cancelled' | 'failed' | 'pending'>(done => app.openInvoice!(url,done));
+}
+
+export async function authenticateTelegram(signal: AbortSignal): Promise<TelegramProfile> {
  if (!telegram?.initData) throw new Error('Откройте игру заново через кнопку бота в Telegram.');
  const controller = new AbortController();
  const abort = () => controller.abort();
@@ -61,8 +96,8 @@ export async function authenticateTelegram(signal: AbortSignal): Promise<string>
   if (response.status === 503) throw new Error('Вход через Telegram пока недоступен. Попробуйте позже.');
   if (!response.ok) throw new Error('Сервер входа недоступен. Попробуйте ещё раз.');
   const {user} = await response.json();
-  if (typeof user?.id !== 'string' || !/^[1-9]\d*$/.test(user.id)) throw new Error('Сервер не подтвердил профиль Telegram.');
-  return user.id;
+  if (typeof user?.id !== 'string' || !/^[1-9]\d*$/.test(user.id) || typeof user.gameToken!=='string') throw new Error('Сервер не подтвердил профиль Telegram.');
+  return {id:user.id,isAdmin:user.isAdmin===true,gameToken:user.gameToken};
  } catch (error) {
   if (controller.signal.aborted || error instanceof TypeError || error instanceof SyntaxError) {
    throw new Error('Не удалось связаться с сервером входа. Попробуйте ещё раз.');

@@ -1,0 +1,58 @@
+.range-screen{display:flex;flex-direction:column;gap:10px;min-height:100%;height:auto;padding-bottom:8px}
+.range-screen h1{margin:0;font-size:clamp(20px,5vw,26px)}
+.range-stage{position:relative;isolation:isolate;overflow:hidden;border:1px solid #75618f;border-radius:18px;background:#211c35;flex:none;height:clamp(590px,86dvh,960px);min-height:590px;container-type:size}
+.range-backdrop{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.range-actor{position:absolute;left:50%;bottom:10%;height:auto;width:min(118cqw,60cqh,520px);aspect-ratio:100/104;transform:translateX(-50%);touch-action:none;user-select:none;cursor:crosshair}
+.range-actor::after{content:'';position:absolute;z-index:-1;bottom:0;left:24%;right:24%;height:4%;border-radius:50%;background:#100d26b0;filter:blur(5px)}
+.range-reaction{position:absolute;z-index:4;left:50%;top:3%;width:max-content;max-width:82%;transform:translateX(-50%);background:#211b37dd;color:#fce7cf;padding:5px 9px;border:1px solid #8c719c;border-radius:9px;font-size:12px;text-align:center;pointer-events:none}
+.range-floating-weapon{position:absolute;z-index:3;width:31%;aspect-ratio:96/74;pointer-events:none;transition:left .09s ease-out,top .09s ease-out;transform:translate(-3%,-46%);filter:drop-shadow(2px 4px 1px #120d25a0)}
+.range-floating-weapon[data-weapon=bat]{transform:translate(-8%,-16%)}
+.range-weapon-art,.range-weapon-art svg{display:block;width:100%;height:100%;overflow:visible;pointer-events:none}
+.range-weapon-art{transform-origin:82% 76%}
+.range-attack-pistol{animation:range-recoil .26s ease-out}
+.range-attack-bat{animation:range-swing .36s ease-out}
+.range-muzzle{animation:range-flash .23s steps(1,end) forwards}
+.range-impact{position:absolute;z-index:4;pointer-events:none;color:#ffeaa6;font-size:34px;transform:translate(-50%,-50%);animation:range-impact .3s forwards;text-shadow:0 0 10px #bb79ff}
+.range-selector{display:grid;grid-template-columns:46px 1fr 46px;align-items:center;gap:8px;width:min(100%,420px);margin-inline:auto;text-align:center}
+.range-selector button{font-size:26px;min-height:43px;padding:0}
+.modern .range-selector .range-keyboard-attack{font-size:20px;background:transparent;border:0;box-shadow:none}
+.range-hint{margin:0;text-align:center;font-size:11px;color:#c7b7da}
+@keyframes range-recoil{35%{transform:translate(0,0)}50%{transform:translate(9px,3px) rotate(12deg)}}
+@keyframes range-swing{0%{transform:rotate(55deg)}40%{transform:rotate(-7deg)}65%{transform:rotate(-12deg)}100%{transform:rotate(0)}}
+@keyframes range-flash{0%,100%{opacity:0}40%,70%{opacity:1}}
+@keyframes range-impact{0%{opacity:1;scale:.7}50%{opacity:1;scale:1.25}100%{opacity:0;scale:1.5}}
+@media(prefers-reduced-motion:reduce){.range-attack-pistol,.range-attack-bat,.range-impact{animation-duration:.01s}.range-floating-weapon{transition:none}}
+/* Keep the nested atlas viewport clipped, even while its outer sprite reacts. */
+.range-actor .avatar-head>svg{overflow:hidden}
+.range-floating-weapon[data-weapon=hand]{transform:translate(-50%,-50%);opacity:.85}
+.range-motion-held{cursor:grabbing}
+.range-selector button:disabled{opacity:1;color:inherit}
+.range-avatar-rig{width:100%;height:100%;transform-origin:50% 66%;will-change:transform}
+.range-avatar-rig>.pixel-avatar{display:block;width:100%;height:100%;pointer-events:auto;overflow:visible}
+.range-avatar-rig [data-avatar-layer]{pointer-events:visiblePainted}
+.range-actor .arm,.range-actor .leg,.range-actor .avatar-head{transition:transform .12s ease-out}
+.range-motion-held .arm,.range-motion-held .leg,.range-motion-held .avatar-head,
+.range-motion-flying .arm,.range-motion-flying .leg,.range-motion-flying .avatar-head{transition:none}
+@media(prefers-reduced-motion:reduce){.range-actor .arm,.range-actor .leg,.range-actor .avatar-head{transition:none}}
+.range-selector{position:sticky;bottom:0;z-index:5;padding:6px 8px;border-radius:17px;background:#191e35f2;backdrop-filter:blur(8px)}
+.range-cut-head [data-avatar-layer=head],.range-cut-right-arm [data-avatar-layer=right-arm],.range-cut-left-arm [data-avatar-layer=left-arm],.range-cut-right-leg [data-avatar-layer=right-leg],.range-cut-left-leg [data-avatar-layer=left-leg]{visibility:hidden;pointer-events:none}
+.range-piece{position:absolute;aspect-ratio:100/104;z-index:2;pointer-events:none;animation:range-piece-drop .85s ease-in forwards;transform-origin:50% 65%}
+.range-piece[data-part=head]{transform-origin:50% 25%}
+.range-piece[data-part$=leg]{transform-origin:50% 87%}
+.range-piece .avatar-body>*{display:none}
+.range-piece[data-part=head] .avatar-body>[data-avatar-layer=head],.range-piece[data-part=right-arm] .avatar-body>[data-avatar-layer=right-arm],.range-piece[data-part=left-arm] .avatar-body>[data-avatar-layer=left-arm],.range-piece[data-part=right-leg] .avatar-body>[data-avatar-layer=right-leg],.range-piece[data-part=left-leg] .avatar-body>[data-avatar-layer=left-leg]{display:inline;animation:none}
+@keyframes range-piece-drop{0%{transform:translate(0,0) rotate(0)}68%{transform:translate(var(--drift),var(--drop)) rotate(var(--spin))}82%{transform:translate(var(--drift),calc(var(--drop) - 14px)) rotate(var(--spin))}100%{transform:translate(var(--drift),var(--drop)) rotate(var(--spin))}}
+@media(prefers-reduced-motion:reduce){.range-piece{animation-duration:.01s}}
+@keyframes range-piece-drop{0%{transform:translate(0,0) rotate(0)}70%{transform:translate(var(--drift),var(--drop)) rotate(var(--spin))}84%{transform:translate(var(--drift),calc(var(--drop) - 10px)) rotate(var(--spin))}100%{transform:translate(var(--drift),var(--drop)) rotate(var(--spin))}}
+.range-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.range-heading button{padding:7px 12px;font-size:12px}
+.range-cut-torso [data-avatar-layer=torso]{visibility:hidden;pointer-events:none}
+.range-piece{animation:none;aspect-ratio:auto;pointer-events:auto;transform-origin:50% 50%;touch-action:none;cursor:grab}
+.range-piece .pixel-avatar{pointer-events:none}
+.range-piece[data-part=torso] .avatar-body>[data-avatar-layer=torso]{display:inline}
+.range-grow-head [data-avatar-layer=head],.range-grow-right-arm [data-avatar-layer=right-arm],.range-grow-left-arm [data-avatar-layer=left-arm],.range-grow-right-leg [data-avatar-layer=right-leg],.range-grow-left-leg [data-avatar-layer=left-leg]{animation:range-regrow .55s ease-out!important}
+@keyframes range-regrow{0%{scale:.05;opacity:0}70%{scale:1.1;opacity:1}100%{scale:1}}
+.range-spawn{animation:range-new .5s ease-out}
+@keyframes range-new{0%{transform:translateY(-800px)}72%{transform:translateY(0) scale(1.1,.88)}87%{transform:translateY(-13px)}100%{transform:none}}
+.range-old-fade{opacity:0;transition:opacity .2s}
+@media(prefers-reduced-motion:reduce){.range-spawn{animation-duration:.01s}}

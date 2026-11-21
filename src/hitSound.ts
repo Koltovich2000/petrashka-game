@@ -44,9 +44,12 @@ export function playHitSound(){
   for(const index of [voice,impact]){
    const source=context.createBufferSource();
    source.buffer=buffers[index];
-   source.connect(context.destination);
+   const gain=context.createGain();
+   gain.gain.value=index<voiceUrls.length?.9:1;
+   source.connect(gain).connect(context.destination);
    source.onended=()=>{
     source.disconnect();
+    gain.disconnect();
     active=active.filter(node=>node!==source);
    };
    active.push(source);

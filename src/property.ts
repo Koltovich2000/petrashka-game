@@ -1,4 +1,4 @@
-import {xpProgress} from './balance';
+import {TUTORIAL,xpProgress} from './balance';
 import {advance, type Game} from './game';
 
 export const beds = {
@@ -14,7 +14,7 @@ export const availableBeds = bedUpgrades;
 
 export function bedReason(g: Game, bed: BedUpgrade): string {
  const item = beds[bed];
- if (g.health <= 0 || g.tutorial < 5) return 'Доступно после вводных заданий';
+ if (g.health <= 0 || g.tutorial < TUTORIAL.done) return 'Доступно после вводных заданий';
  if (g.bed === bed || g.bed === 'premium') return 'Уже установлена эта кровать или лучше';
  if (xpProgress(g.economy.xp).level < item.level) return `Доступно с уровня ${item.level}`;
  if (g.economy.balance < item.price) return 'Не хватает денег';
@@ -24,7 +24,7 @@ export function bedReason(g: Game, bed: BedUpgrade): string {
 export function buyBed(game: Game, bed: BedUpgrade, now = Date.now()): Game {
  const g = advance(game, now);
  if (bedReason(g, bed)) return g;
- return {...g, bed, economy: {...g.economy, balance: g.economy.balance - beds[bed].price}};
+ return {...g, bed, bedPurchasePrice:beds[bed].price, economy: {...g.economy, balance: g.economy.balance - beds[bed].price}};
 }
 
 export function parseBed(value: unknown): Bed {
@@ -46,7 +46,7 @@ const hour = 3_600_000;
 
 export function businessReason(g: Game, id: Business): string {
  if (Object.hasOwn(g.businesses, id)) return 'Уже открыт';
- if (g.health <= 0 || g.tutorial < 5) return 'Доступно после вводных заданий';
+ if (g.health <= 0 || g.tutorial < TUTORIAL.done) return 'Доступно после вводных заданий';
  if (xpProgress(g.economy.xp).level < businessLevel) return `Доступно с уровня ${businessLevel}`;
  if (g.economy.balance < businesses[id].price) return 'Не хватает денег';
  return '';

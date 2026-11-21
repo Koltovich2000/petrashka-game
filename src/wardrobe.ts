@@ -13,21 +13,57 @@ export const catalog:Record<Category,{name:string;color:string}[]>={
 export function parseOutfit(raw:string|null):Outfit{try{const value=JSON.parse(raw??'null');return Object.fromEntries((Object.keys(categories) as Category[]).map(k=>[k,Number.isInteger(value?.[k])&&value[k]>=(k==='hat'||k==='accessory'?-1:0)&&value[k]<10?value[k]:defaultOutfit[k]])) as Outfit;}catch{return {...defaultOutfit};}}
 
 export type OutfitPreset={id:string;name:string;outfit:Outfit};
-export type Closet={outfit:Outfit;owned:Record<Category,number[]>;presets:OutfitPreset[];activePreset:string|null};
+export type Closet={outfit:Outfit;owned:Record<Category,number[]>;paid:Partial<Record<Category,Record<number,number>>>;presets:OutfitPreset[];activePreset:string|null};
 export const categoryKeys=Object.keys(categories) as Category[];
+// Keep the original item IDs for saved ownership, purchase prices and hospital sale history.
+const retired:Record<Category,ReadonlySet<number>>={
+ top:new Set([3,4,7,8,9]),
+ pants:new Set([1,3,4,5,9]),
+ shoes:new Set([4,5,6,7,8]),
+ hat:new Set([0,1,2,3,4,5,8,9]),
+ accessory:new Set([0,2,4,7,9]),
+};
+export const canEquipClothing=(category:Category,index:number)=>
+ index===defaultOutfit[category]||Boolean(catalog[category][index]&&!retired[category].has(index));
+export function wardrobeItems(category:Category){
+ return catalog[category].map((item,index)=>({...item,index})).filter(item=>canEquipClothing(category,item.index));
+}
+function availableOutfit(outfit:Outfit):Outfit{
+ let result=outfit;
+ for(const category of categoryKeys)if(!canEquipClothing(category,outfit[category])){
+  if(result===outfit)result={...outfit};
+  result[category]=defaultOutfit[category];
+ }
+ return result;
+}
+export function refreshClosetOutfits(closet:Closet|null):Closet|null{
+ if(!closet)return null;
+ const outfit=availableOutfit(closet.outfit);
+ const presets=closet.presets.map(preset=>{
+  const fitted=availableOutfit(preset.outfit);
+  return fitted===preset.outfit?preset:{...preset,outfit:fitted};
+ });
+ return outfit===closet.outfit&&presets.every((preset,index)=>preset===closet.presets[index])
+  ?closet:{...closet,outfit,presets};
+}
 export function starterCloset(outfit=defaultOutfit):Closet {
  return {
-  outfit:{...outfit},presets:[],activePreset:null,
+  outfit:{...availableOutfit(outfit)},presets:[],activePreset:null,paid:{},
   owned:Object.fromEntries(categoryKeys.map(key=>[key,[...new Set([defaultOutfit[key],outfit[key]].filter(index=>index>=0))]])) as Closet['owned'],
  };
 }
-export function parseCloset(raw:unknown):Closet|null {
+export function parseCloset(raw:unknown,migrateOwnership=false):Closet|null {
  if(!raw||typeof raw!=='object')return null;
  const saved=raw as Partial<Closet>;
  const result=starterCloset(parseOutfit(JSON.stringify(saved.outfit)));
  for(const category of categoryKeys){
   const owned=saved.owned?.[category];
   if(Array.isArray(owned))result.owned[category]=[...new Set([...result.owned[category],...owned.filter(i=>Number.isInteger(i)&&i>=0&&i<catalog[category].length)])];
+  for(const index of result.owned[category]){
+   if(index===defaultOutfit[category])continue;
+   const price=saved.paid?.[category]?.[index]??(migrateOwnership&&Array.isArray(owned)&&owned.includes(index)?clothingPrice(index):0);
+   if(Number.isSafeInteger(price)&&price>0)(result.paid[category]??={})[index]=price;
+  }
  }
  const seen=new Set<string>();
  if(Array.isArray(saved.presets))for(const p of saved.presets){
@@ -42,6 +78,19 @@ export function parseCloset(raw:unknown):Closet|null {
 }
 export const clothingPrice=(index:number)=>80+index*40;
 export const clothingLevel=(index:number)=>1+Math.floor(index/3);
+
+export function removePurchasedClothing(closet:Closet,category:Category,index:number):Closet{
+ const paid={...closet.paid};
+ const remaining={...paid[category]};
+ delete remaining[index];
+ if(Object.keys(remaining).length)paid[category]=remaining;
+ else delete paid[category];
+ const replace=(outfit:Outfit)=>outfit[category]===index?{...outfit,[category]:defaultOutfit[category]}:outfit;
+ const woreSoldItem=closet.outfit[category]===index;
+ return {...closet,outfit:woreSoldItem?{...defaultOutfit}:closet.outfit,activePreset:woreSoldItem?null:closet.activePreset,paid,
+  owned:{...closet.owned,[category]:closet.owned[category].filter(item=>item!==index)},
+  presets:closet.presets.map(preset=>({...preset,outfit:replace(preset.outfit)}))};
+}
 
 export const sameOutfit=(a:Outfit,b:Outfit)=>categoryKeys.every(k=>a[k]===b[k]);
 export function savePreset(c:Closet,name:string,id?:string):Closet{

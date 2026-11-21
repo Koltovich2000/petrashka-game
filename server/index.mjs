@@ -4,6 +4,9 @@ import {stat} from 'node:fs/promises';
 import {extname, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {verifyTelegramInitData} from './telegram-auth.mjs';
+import {createGiftsApi} from './gifts-api.mjs';
+import {createGameApi} from './game-api.mjs';
+import {issueGameSession} from './game-session.mjs';
 
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const types = {
@@ -18,15 +21,25 @@ function json(res, status, data) {
  res.end(JSON.stringify(data));
 }
 
-export function createAppServer({botToken = process.env.TELEGRAM_BOT_TOKEN} = {}) {
- return createServer(async (req,res) => {
+export function createAppServer({
+ botToken = process.env.TELEGRAM_BOT_TOKEN,
+ adminIds = process.env.TELEGRAM_ADMIN_IDS ?? '',
+ gifts:giftOptions,
+ game:gameOptions,
+} = {}) {
+ const admins = new Set(adminIds.split(',').map(id => id.trim()).filter(id => /^[1-9]\d*$/.test(id)));
+ const gifts = createGiftsApi({botToken,...giftOptions});
+ const game = createGameApi({botToken,admins,...gameOptions});
+ const server = createServer(async (req,res) => {
   res.setHeader('X-Content-Type-Options','nosniff');
-  let path;
+  let path, url;
   try {
-   path = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+   url = new URL(req.url,'http://localhost');
+   path = decodeURIComponent(url.pathname);
   } catch {return json(res,400,{error:'invalid_path'});}
 
   if (path === '/healthz' && req.method === 'GET') return json(res,200,{ok:true});
+  if (path === '/api/game') return game.handle(req,res);
   if (path === '/api/telegram/auth') {
    if (req.method !== 'POST') {
     res.setHeader('Allow','POST');
@@ -47,12 +60,14 @@ export function createAppServer({botToken = process.env.TELEGRAM_BOT_TOKEN} = {}
     }
     const {initData} = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     const user = verifyTelegramInitData(initData,botToken);
-    return user ? json(res,200,{user}) : json(res,401,{error:'invalid_or_expired_init_data'});
+    return user ? json(res,200,{user:{...user,isAdmin:admins.has(user.id),gameToken:issueGameSession(user.id,botToken)}}) : json(res,401,{error:'invalid_or_expired_init_data'});
    } catch {
     return json(res,400,{error:'invalid_json'});
    }
   }
 
+  const giftRequest = gifts.handle(req,res,path,url.searchParams);
+  if (giftRequest) return giftRequest;
   if (path === '/api' || path.startsWith('/api/')) return json(res,404,{error:'not_found'});
   if (req.method !== 'GET' && req.method !== 'HEAD') {
    res.setHeader('Allow','GET, HEAD');
@@ -70,9 +85,17 @@ export function createAppServer({botToken = process.env.TELEGRAM_BOT_TOKEN} = {}
   if (req.method === 'HEAD') return res.end();
   createReadStream(file).on('error',()=>res.destroy()).pipe(res);
  });
+ server.on('close',() => {gifts.close();game.close();});
+ return server;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
- const port = Number(process.env.PORT || 3000);
- createAppServer().listen(port,'0.0.0.0',()=>console.log(`Petrashka listening on ${port}`));
+ const index = await stat(resolve(dist,'index.html')).catch(()=>null);
+ if (!index?.isFile()) {
+  console.error('Missing dist/index.html. Run npm run build before npm start.');
+  process.exitCode = 1;
+ } else {
+  const port = Number(process.env.PORT || 3000);
+  createAppServer().listen(port,'0.0.0.0',()=>console.log(`Petrashka listening on ${port}`));
+ }
 }
