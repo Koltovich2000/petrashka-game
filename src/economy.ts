@@ -20,7 +20,7 @@ export function applyClothing(game:Game,category:Category,index:number):Game{
   return {...game,closet:{...closet,outfit}};
  }
  if(playerLevel(game.economy.xp)<clothingLevel(index))return game;
- const price=clothingPrice(index);
+ const price=clothingPrice(category,index);
  if(game.economy.balance<price)return game;
  return {
   ...game,

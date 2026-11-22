@@ -13,7 +13,7 @@ const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const types = {
  '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
  '.css':'text/css; charset=utf-8', '.png':'image/png', '.jpg':'image/jpeg',
- '.webp':'image/webp', '.svg':'image/svg+xml', '.wav':'audio/wav', '.mp3':'audio/mpeg',
+ '.webp':'image/webp', '.svg':'image/svg+xml', '.wav':'audio/wav', '.mp3':'audio/mpeg', '.m4a':'audio/mp4',
  '.woff2':'font/woff2', '.ico':'image/x-icon', '.json':'application/json',
 };
 

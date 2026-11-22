@@ -3,8 +3,8 @@ import {advance, type Game} from './game';
 
 export const beds = {
  standard: {name: 'Обычная кровать', energy: 16, price: 0, level: 1},
- comfort: {name: 'Удобная кровать', energy: 20, price: 15_000, level: 6},
- premium: {name: 'Премиальная кровать', energy: 25, price: 35_000, level: 10},
+ comfort: {name: 'Удобная кровать', energy: 20, price: 4_500, level: 6},
+ premium: {name: 'Премиальная кровать', energy: 25, price: 10_500, level: 10},
 } as const;
 
 type Bed = keyof typeof beds;
@@ -32,9 +32,9 @@ export function parseBed(value: unknown): Bed {
 }
 
 export const businesses = {
- lemonade: {name: 'Лимонад', price: 5_000, profit: 100},
- coffee: {name: 'Кофейный киоск', price: 25_000, profit: 350},
- clothing: {name: 'Магазин одежды', price: 100_000, profit: 1100},
+ lemonade: {name: 'Лимонад', price: 12_000, profit: 125},
+ coffee: {name: 'Кофейный киоск', price: 28_000, profit: 320},
+ clothing: {name: 'Магазин одежды', price: 65_000, profit: 820},
 } as const;
 
 export type Business = keyof typeof businesses;

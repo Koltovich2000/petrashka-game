@@ -1,16 +1,18 @@
-import type {ReactNode} from 'react';
+import {useId,type ReactNode} from 'react';
 import { catalog, type Outfit } from './wardrobe';
 import {DumbbellArt} from './DumbbellArt';
 import {YogaArms,YogaLegs} from './YogaLimbs';
 import type {YogaPose} from './yoga';
 import type {HairWetness} from './hair';
 import {AvatarHeadArt} from './AvatarHeadArt';
-export type AvatarLayer='head'|'torso'|'right-arm'|'left-arm'|'right-leg'|'left-leg'|'right-forearm'|'left-forearm';
-export type AvatarJoints=Partial<Record<AvatarLayer,number>>;
+export type AvatarLayer='head'|'torso'|'right-arm'|'left-arm'|'right-leg'|'left-leg'|'right-forearm'|'left-forearm'|'right-shin'|'left-shin';
+export type AvatarJoints=Partial<Record<AvatarLayer|'waist',number>>;
 export function PixelAvatar({outfit:o,pose='idle',state='happy',hit='head',viewBox='0 0 100 104',hygiene=100,wetness=0,decals,joints,rangeFaces=false,yogaPose}:{outfit:Outfit;rangeFaces?:boolean;pose?:string;state?:string;hit?:string;viewBox?:string;hygiene?:number;wetness?:HairWetness;joints?:AvatarJoints;decals?:Partial<Record<AvatarLayer,ReactNode>>;yogaPose?:YogaPose}){
  const holdingWeights=pose==='dumbbells'||pose==='dumbbell-stand',eating=pose==='eating';
  const top=catalog.top[o.top].color,pants=catalog.pants[o.pants].color,shoe=catalog.shoes[o.shoes].color,hat=catalog.hat[o.hat]?.color,acc=catalog.accessory[o.accessory]?.color;
- const joint=(name:AvatarLayer,x:number,y:number)=>joints?{transform:`rotate(${joints[name]??0}deg)`,transformOrigin:`${x}px ${y}px`,animation:'none'}:undefined;
+ const articulated=joints?.waist!==undefined;
+ const kneeClip=useId();
+ const joint=(name:AvatarLayer|'waist',x:number,y:number)=>joints?{transform:`rotate(${joints[name]??0}deg)`,transformOrigin:`${x}px ${y}px`,animation:'none'}:undefined;
  const expression=state==='scared'||state==='angry'?2:state==='pain'?3:state==='faint'||state==='detached'||state==='sleep'?1:pose==='dragging'||pose==='falling'||pose==='reacting'?2:['hungry','sick','sad','tired','dirty'].includes(state)?3:0;
  const rangeFace=state==='angry'?2:state==='pain'||state==='detached'?1:0;
  const cape=o.accessory===9&&<path className="avatar-cape" d={yogaPose?'M30 49 24 77H76L70 49Z':'M30 49 20 93 80 93 70 49Z'} fill={acc}/>;
@@ -49,18 +51,30 @@ export function PixelAvatar({outfit:o,pose='idle',state='happy',hit='head',viewB
  {o.accessory===6&&<><path d="M35 49 64 71" stroke={acc} strokeWidth="4"/><path d="M56 65H70V78H56Z" fill={acc}/></>}
  {o.accessory===7&&<><path d="m41 49 9 12 9-12" fill="none" stroke="#ed5757"/><path d="m50 58 3 5 6 1-4 4 1 6-6-3-6 3 1-6-4-4 6-1Z" fill={acc}/></>}
  {o.accessory===8&&<path d="M63 73H72V77H63Z" fill={acc}/>}</g>;
- return <svg className={`pixel-avatar pose-${pose} hit-${hit} state-${state}${yogaPose?' yoga-pose yoga-pose-'+yogaPose:''}`} viewBox={yogaPose?'-2 -17 104 121':viewBox} shapeRendering="crispEdges" aria-hidden="true"><g className="avatar-body" stroke="#261b34" strokeWidth="2" strokeLinejoin="miter">
- {yogaPose?<>
-  <YogaLegs pose={yogaPose} pants={pants} shoe={shoe}/>
-  <g className="yoga-upper-body">
-   {cape}{torso}{torsoAccessories}{head}
-   <YogaArms pose={yogaPose} top={top}/>
-  </g>
- </>:<>
- {cape}
- <g className="leg leg-right" data-avatar-layer="right-leg" style={joint('right-leg',43,73)}><path d="M35 70H49V96H33V88H35Z" fill={pants}/>{o.pants===2&&<path d="M35 77H44V84H35" fill="#95946a"/>}{o.pants===7&&<path d="M37 80H45M36 86H44" stroke="#d1c9b5"/>}{o.pants===8&&<path d="M35 83H48V96H34Z" fill="#efaa79"/>}<path d="M32 92H48V101H27V97H32Z" fill={shoe}/><path d="M28 100H48M35 95H43" stroke="#f9eddd"/>{o.shoes===7&&<path d="M34 84H47V94H33Z" fill={shoe}/>}{decals?.['right-leg']}</g>
- <g className="leg leg-left" data-avatar-layer="left-leg" style={joint('left-leg',57,73)}><path d="M51 70H65V88H67V96H51Z" fill={pants}/>{o.pants===2&&<path d="M56 77H65V84H56" fill="#95946a"/>}{o.pants===7&&<path d="M55 80H63M56 86H64" stroke="#d1c9b5"/>}{o.pants===8&&<path d="M52 83H65V96H52Z" fill="#efaa79"/>}<path d="M52 92H68V97H73V101H52Z" fill={shoe}/><path d="M52 100H72M57 95H65" stroke="#f9eddd"/>{o.shoes===7&&<path d="M53 84H66V94H53Z" fill={shoe}/>}{decals?.['left-leg']}</g>
- {hygiene<=50&&<path className="wet-pants" d="M40 73H60V81H58V89H53V80H47V91H42V83H40Z" fill="#c69a2e" fillOpacity=".85" stroke="#f8d768" strokeOpacity=".7" strokeWidth="1"/>}
+ function leg(side:'right'|'left'){
+  const right=side==='right',part=`${side}-leg` as const,shin=`${side}-shin` as const;
+  const art=<>
+   <path d={right?'M35 70H49V96H33V88H35Z':'M51 70H65V88H67V96H51Z'} fill={pants}/>
+   {o.pants===2&&<path d={right?'M35 77H44V84H35':'M56 77H65V84H56'} fill="#95946a"/>}
+   {o.pants===7&&<path d={right?'M37 80H45M36 86H44':'M55 80H63M56 86H64'} stroke="#d1c9b5"/>}
+   {o.pants===8&&<path d={right?'M35 83H48V96H34Z':'M52 83H65V96H52Z'} fill="#efaa79"/>}
+   <path d={right?'M32 92H48V101H27V97H32Z':'M52 92H68V97H73V101H52Z'} fill={shoe}/>
+   <path d={right?'M28 100H48M35 95H43':'M52 100H72M57 95H65'} stroke="#f9eddd"/>
+   {o.shoes===7&&<path d={right?'M34 84H47V94H33Z':'M53 84H66V94H53Z'} fill={shoe}/>}
+  </>;
+  const kneeX=right?42:58;
+  return <g className={`leg leg-${side}`} data-avatar-layer={part} style={joint(part,right?43:57,73)}>
+   {articulated?<>
+    <circle cx={kneeX} cy="84" r="6.8" fill={pants}/>
+    <g clipPath={`url(#${kneeClip}-thigh)`}>{art}{decals?.[part]}</g>
+    <g data-avatar-layer={shin} style={joint(shin,kneeX,84)}>
+     <g clipPath={`url(#${kneeClip}-shin)`}>{art}</g>
+     {decals?.[shin]}
+    </g>
+   </>:<>{art}{decals?.[part]}</>}
+  </g>;
+ }
+ const upper=<>
  {torso}
  <g className="arm arm-right" data-avatar-layer="right-arm" style={joint('right-arm',34,52)}><path d="M30 50H38V62H29Z" fill={top}/>{joints||holdingWeights?<> <path d="M29 62H37V71H29Z" fill="#f2ac7c" strokeWidth="1.8"/><path d="M30 65V70" stroke="#ffd1a0"/>{decals?.['right-arm']}
  <g data-avatar-layer="right-forearm" style={joint('right-forearm',33,70)}>{holdingWeights&&<DumbbellArt x={31} y={79} width={24}/>}<path d="M29 70H37V79H33V82H27V76H29Z" fill="#f2ac7c"/><path d="M30 70V76" stroke="#ffd1a0"/>{decals?.['right-forearm']}</g> </>:<> <path d="M29 62H37V79H33V82H27V76H29Z" fill="#f2ac7c"/><path d="M30 66V76" stroke="#ffd1a0" strokeWidth="2"/>{decals?.['right-arm']} </>}</g>
@@ -75,6 +89,24 @@ export function PixelAvatar({outfit:o,pose='idle',state='happy',hit='head',viewB
   <path d="M36 55Q36 51 39 49" fill="none" stroke="#ffd1a0" strokeWidth="1.25"/>
  </g>}
  {torsoAccessories}
+ </>;
+ return <svg className={`pixel-avatar pose-${pose} hit-${hit} state-${state}${yogaPose?' yoga-pose yoga-pose-'+yogaPose:''}`} viewBox={yogaPose?'-2 -17 104 121':viewBox} shapeRendering="crispEdges" aria-hidden="true">
+ {articulated&&<defs>
+  <clipPath id={`${kneeClip}-thigh`}><path d="M25 68H75V85H25Z"/></clipPath>
+  <clipPath id={`${kneeClip}-shin`}><path d="M25 83H75V103H25Z"/></clipPath>
+ </defs>}
+ <g className="avatar-body" stroke="#261b34" strokeWidth="2" strokeLinejoin="miter">
+ {yogaPose?<>
+  <YogaLegs pose={yogaPose} pants={pants} shoe={shoe}/>
+  <g className="yoga-upper-body">
+   {cape}{torso}{torsoAccessories}{head}
+   <YogaArms pose={yogaPose} top={top}/>
+  </g>
+ </>:<>
+ {cape}
+ {leg('right')}{leg('left')}
+ {hygiene<=50&&<path className="wet-pants" d="M40 73H60V81H58V89H53V80H47V91H42V83H40Z" fill="#c69a2e" fillOpacity=".85" stroke="#f8d768" strokeOpacity=".7" strokeWidth="1"/>}
+ {articulated?<g style={joint('waist',50,70)}>{upper}</g>:upper}
  </>}
  </g></svg>;
 }

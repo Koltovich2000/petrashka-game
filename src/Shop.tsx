@@ -1,79 +1,98 @@
+import {useState,type FormEvent} from 'react';
 import {TUTORIAL} from './balance';
-import {useState} from 'react';
-import {furnitureCatalog, activities, locationLabels, type FurnitureId} from './activities';
-import {playerLevel, rubles} from './economy';
+import {furnitureCatalog,activities,locationIds,locationLabels,type FurnitureId} from './activities';
+import {maxCharacterNameLength,parseCharacterName} from './characterName';
+import {playerLevel,rubles} from './economy';
 import type {Game} from './game';
 import {FurnitureArt} from './FurnitureArt';
+import {dogFoodPrice,dogReclaimPrice} from './dogSchedule';
 import {DogArt} from './Dog';
-import {
- availableBeds, beds, bedReason, businesses, businessKeys, businessHours, businessIncome, businessReason,
- type Business, type BedUpgrade,
-} from './property';
 
 interface Props {
  game: Game;
  onBuy: (id: FurnitureId) => void;
- onAdoptDog: () => void;
- onBed: (id: BedUpgrade) => void;
- onOpenBusiness: (id: Business) => void;
- onCollectBusiness: (id: Business) => void;
+ onAdoptDog: (name: string) => Promise<boolean>;
+ onSurrenderDog: () => Promise<boolean>;
+ onReclaimDog: () => Promise<boolean>;
+ onBuyDogFood: () => void;
 }
 
-export function Shop({game, onBuy, onAdoptDog, onBed, onOpenBusiness, onCollectBusiness}: Props) {
- const [view, setView] = useState<'home' | 'business'>('home');
+export function Shop({game,onBuy,onAdoptDog,onSurrenderDog,onReclaimDog,onBuyDogFood}:Props) {
+ const [dogName,setDogName]=useState('');
+ const [dogPending,setDogPending]=useState(false);
+ const [confirmSurrender,setConfirmSurrender]=useState(false);
+ const name=parseCharacterName(dogName);
+ const level=playerLevel(game.economy.xp);
+ const canShop=game.health>0&&game.tutorial>=TUTORIAL.done;
+ const sheltered=game.dogCare?.sheltered===true;
+ const canReclaim=game.economy.balance>=dogReclaimPrice;
+
+ async function updateDog(action:()=>Promise<boolean>){
+  if(!canShop||dogPending)return false;
+  setDogPending(true);
+  try{return await action();}
+  finally{setDogPending(false);}
+ }
+
+ async function adopt(event:FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  if(!name||game.dog||sheltered)return;
+  if(await updateDog(()=>onAdoptDog(name)))setDogName('');
+ }
+
  return <section className="shop-screen">
   <div className="screen-heading"><h1>Магазин</h1></div>
-  <div className="shop-sections" aria-label="Разделы магазина">
-   <button aria-pressed={view === 'home'} onClick={() => setView('home')}>Для квартиры</button>
-   <button aria-pressed={view === 'business'} onClick={() => setView('business')}>Бизнес</button>
+  <h2>Питомец</h2>
+  <div className="furniture-catalog">
+   <article className="dog-adoption">
+    <DogArt preview/>
+    <h3>{(game.dog||sheltered)&&game.dogCare?.name ? <bdi>{game.dogCare.name}</bdi> : 'Собака'}</h3>
+    {game.dog ? <>
+     <p>Собака дома</p>
+     {confirmSurrender?<div className="dog-shelter-actions" role="group" aria-label="Подтверждение возврата">
+      <p>Забрать собаку обратно можно за {rubles(dogReclaimPrice)}.</p>
+      <button type="button" disabled={!canShop||dogPending} onClick={async()=>{if(await updateDog(onSurrenderDog))setConfirmSurrender(false);}}>Подтвердить возврат</button>
+      <button type="button" disabled={dogPending} onClick={()=>setConfirmSurrender(false)}>Отмена</button>
+     </div>:<button type="button" disabled={!canShop} onClick={()=>setConfirmSurrender(true)}>Сдать в приют</button>}
+    </> : sheltered ? <>
+     <p>Собака в приюте</p>
+     <button type="button" disabled={!canShop||!canReclaim||dogPending} onClick={()=>void updateDog(onReclaimDog)}>Выкупить · {rubles(dogReclaimPrice)}</button>
+    </> : <form onSubmit={adopt}>
+     <label htmlFor="dog-name">Имя собаки</label>
+     <input id="dog-name" type="text" value={dogName} onChange={event=>setDogName(event.target.value)} maxLength={maxCharacterNameLength} autoComplete="off" disabled={!canShop||dogPending} required/>
+     <button type="submit" disabled={!name||!canShop||dogPending}>Приютить бесплатно</button>
+    </form>}
+   </article>
+   {game.dog&&<article>
+    <h3>Корм для собаки</h3>
+    <p>Одна порция восстанавливает сытость. Покорми собаку в течение 48 часов, чтобы она не умерла от голода.</p>
+    <p>Порций дома: {game.dogFood??0}</p>
+    <button type="button" disabled={!canShop||game.economy.balance<dogFoodPrice} onClick={onBuyDogFood}>Купить корм · {rubles(dogFoodPrice)}</button>
+   </article>}
   </div>
-  {view === 'home' ? <>
-   <h2>Кровати</h2>
-   <p>Установлена {beds[game.bed].name.toLowerCase()} · +{beds[game.bed].energy} энергии в час сна</p>
-   <div className="furniture-catalog">{availableBeds.map(id => {
-    const bed = beds[id], reason = bedReason(game, id);
-    return <article key={id}>
-     <h2>{bed.name}</h2><p>+{bed.energy} энергии в час сна · {rubles(bed.price)}</p>
-     <button disabled={Boolean(reason)} onClick={() => onBed(id)}>{game.bed === id ? 'Установлена' : reason || 'Купить и установить'}</button>
-    </article>;
-   })}</div>
-   <h2>Питомец</h2>
-   <div className="furniture-catalog"><article className="dog-adoption">
-    <DogArt sitting/><h2>Собака</h2>
-    <button disabled={game.dog||game.health===0||game.tutorial<TUTORIAL.done} onClick={onAdoptDog}>{game.dog?'✓ Собака дома':'Приютить бесплатно'}</button>
-   </article></div>
-   <h2>Предметы для квартиры</h2>
-   <div className="furniture-catalog">{furnitureCatalog.map(item => {
-    const owned = Boolean(game.furniture[item.id]);
-    const locked = playerLevel(game.economy.xp) < item.level;
-    const poor = game.economy.balance < item.price;
-    const needsPet = item.id==='tray'&&!game.dog;
-    const a = activities[item.id];
+  <h2>Обустроить квартиру</h2>
+  <p className="muted">Покупки сразу появляются в нужной комнате. Нажми «Обустроить» в комнате, чтобы передвинуть предмет.</p>
+  {locationIds.map(location=><section className="shop-room" key={location}>
+   <h3>{locationLabels[location]}</h3>
+   <div className="furniture-catalog">{furnitureCatalog.filter(item=>item.location===location).map(item=>{
+    const owned=Boolean(game.furniture[item.id]);
+    const needsPet=item.id==='tray'&&!game.dog;
+    const locked=level<item.level;
+    const poor=game.economy.balance<item.price;
+    const activity='art' in item ? null : activities[item.id];
+    const label=owned ? '✓ Куплено'
+     : needsPet ? 'Сначала приютите питомца'
+     : locked ? `С уровня ${item.level} · ${rubles(item.price)}`
+     : poor ? `Нужно ${rubles(item.price)}`
+     : `Купить · ${rubles(item.price)}`;
     return <article key={item.id}>
-     <FurnitureArt kind={item.id}/><h2>{item.name}</h2>
-     <p>{locationLabels[item.location]} · Ур. {item.level}</p>
-     <p>{a.minutes} мин. · ⚡ −{a.energy} · 🍔 −{a.food} · 🫧 −{a.hygiene} · ☺ +{a.mood}{a.fitness > 0 ? ` · Физподготовка +${a.fitness} XP` : ''}</p>
-     <button disabled={owned || needsPet || locked || poor || game.tutorial < TUTORIAL.done} onClick={() => onBuy(item.id)}>
-      {owned ? '✓ Куплено' : needsPet ? 'Сначала приютите питомца' : locked ? `С уровня ${item.level}` : poor ? `Нужно ${rubles(item.price)}` : `Купить · ${rubles(item.price)}`}
-     </button>
+     <FurnitureArt kind={item.id}/>
+     <h4>{item.name}</h4>
+     {activity&&<p>{activity.minutes} мин. · ⚡ −{activity.energy} · 🍔 −{activity.food} · 🫧 −{activity.hygiene} · ☺ +{activity.mood}{activity.fitness>0&&` · Физподготовка +${activity.fitness} XP`}</p>}
+     <button type="button" disabled={!canShop||owned||needsPet||locked||poor} onClick={()=>onBuy(item.id)}>{label}</button>
     </article>;
    })}</div>
-   <p className="muted">Физподготовка: {game.fitnessXP} XP. Первые 3 тренировки за день дают полный опыт, следующие — половину. Новый день начинается в 00:00 по Москве.</p>
-  </> : <>
-   <h2>Свой бизнес</h2>
-   <p>Доход копится до {businessHours} часов, в том числе во сне и при закрытой игре.</p>
-   <div className="furniture-catalog">{businessKeys.map(id => {
-    const item = businesses[id];
-    const owned = Object.hasOwn(game.businesses, id);
-    const income = businessIncome(game, id);
-    const reason = businessReason(game, id);
-    return <article key={id}>
-     <h2>{item.name}</h2><p>Открытие {rubles(item.price)} · прибыль {rubles(item.profit)} / ч</p>
-     {owned
-      ? <button disabled={income === 0 || game.health <= 0} onClick={() => onCollectBusiness(id)}>Забрать {rubles(income)}</button>
-      : <button disabled={Boolean(reason)} onClick={() => onOpenBusiness(id)}>{reason || 'Открыть бизнес'}</button>}
-    </article>;
-   })}</div>
-  </>}
+  </section>)}
+  <p className="muted">Физподготовка: {game.fitnessXP} XP. Первые 3 тренировки за день дают полный опыт, следующие — половину. Новый день начинается в 00:00 по Москве.</p>
  </section>;
 }

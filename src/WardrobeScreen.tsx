@@ -40,7 +40,7 @@ export function Wardrobe({closet,balance,level,wetness,onSelect}:Props){
   <div className="wardrobe-caption"><h2>{categories[category]}</h2>{worn!==defaultOutfit[category]&&<button onClick={()=>{onSelect(category,defaultOutfit[category]);setPreview(null);}}>{removable?'Снять':'Вернуть базовые'}</button>}</div>
   <div className="clothes-grid">{items.map(item=>{
    const {index}=item;
-   const owned=closet.owned[category].includes(index),locked=!available(index),price=clothingPrice(index);
+   const owned=closet.owned[category].includes(index),locked=!available(index),price=clothingPrice(category,index);
    return <article key={item.name} className={'clothing-card'+(worn===index?' worn':'')+(fitted===index?' fitting':'')}>
     <button type="button" className="clothing-preview" disabled={locked} aria-pressed={fitted===index} onClick={()=>setPreview(index)}>
      <div className={'item-preview item-'+category}><PixelAvatar outfit={{...defaultOutfit,[category]:index}} viewBox={crops[category]}/></div>

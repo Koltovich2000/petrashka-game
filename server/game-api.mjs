@@ -1,12 +1,14 @@
 import {resolve} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {advance,beginIntro,parseSave} from '../src/game.ts';
+import {advance,beginIntro,parseSave,setAdminStat} from '../src/game.ts';
 import {isLocation} from '../src/activities.ts';
-import {runGameCommand} from '../src/gameCommands.ts';
+import {runGameCommand,settleGame} from '../src/gameCommands.ts';
 import {gameSessionId} from './game-session.mjs';
 import {openGameStore} from './game-store.mjs';
 import {adminLabels} from '../src/adminTypes.ts';
 import {playerLevel} from '../src/economy.ts';
+import {gameTime} from '../src/world.ts';
+import {characterNameKey,parseCharacterName} from '../src/characterName.ts';
 
 function history(before,after,at){
  const h=after.hospital,prev=before.hospital;
@@ -33,13 +35,27 @@ const summarize=(row,state)=>({id:row.id,name:row.display_name,lastSeen:Number(r
 const describe=(row,state)=>({...summarize(row,state),values:fieldsOf(state),introCompleted:state.introCompleted,hospitalized:Boolean(state.hospital)});
 function conflict(code){return Object.assign(new Error(code),{status:409,code});}
 
-export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_PATH||resolve('data/game.sqlite'),
+export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_PATH?.trim()||resolve('data/game.sqlite'),
  databaseUrl=process.env.GAME_DATABASE_URL||process.env.GIFTS_DATABASE_URL,clock=Date.now}){
  let database;
  let loggedFirstSave=false;
  const getStore=()=>database??=openGameStore(databasePath,databaseUrl).catch(error=>{database=undefined;throw error;});
+ const worldState=async(store,snapshot,playerId,admin=false)=>({
+  now:snapshot.now,paused:snapshot.pauses.at(-1)?.end===null,
+  poll:await store.world.poll(snapshot.now,playerId,admin),
+ });
  const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
  return {
+  async world(adminId){
+   const store=await getStore();
+   return worldState(store,await store.world.snapshot(clock),adminId,true);
+  },
+  async changeWorld(adminId,command){
+   const store=await getStore();
+   if(command.kind==='pause')await store.world.setPause(command.paused,clock);
+   else if(!await store.world.createPoll(command,clock))throw conflict('poll_already_running');
+   return worldState(store,await store.world.snapshot(clock),adminId,true);
+  },
   async logStorage(){
    const source=databaseUrl?'PostgreSQL':`SQLite ${resolve(databasePath)}`;
    try{
@@ -58,17 +74,40 @@ export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_
    return {...result,players:result.players.map(row=>summarize(row,readState(row.state,now)))};
   },
   async player(id){
-   const row=await (await getStore()).player(id);
-   const now=clock();
-   return row?describe(row,advance(readState(row.state,now),now,true)):null;
+   const store=await getStore();
+   const {now,pauses}=await store.world.snapshot(clock);
+   const gameAt=gameTime(now,pauses);
+   const row=await store.player(id);
+   return row?describe(row,settleGame(readState(row.state,gameAt),gameAt,pauses,now)):null;
   },
   async journal(page){return (await getStore()).journal(page);},
-  async editPlayer(id,adminId,operationId,request){
-   const at=clock();
+  async adjustPlayers(adminId,id,request){
    const store=await getStore();
+   const {now:at,pauses}=await store.world.snapshot(clock);
+   const gameAt=gameTime(at,pauses);
+   const action={adminId,id,at,request:JSON.stringify(request)};
+   return store.changeAll(action,raw=>{
+    const previous=readState(raw,gameAt);
+    const settled=settleGame(previous,gameAt,pauses,at);
+    const next={...settled};
+    for(const field of request.fields){
+     if(field==='health'&&next.hospital)continue;
+     const value=Math.max(0,next[field]+request.delta);
+     if(value>Number.MAX_SAFE_INTEGER)throw conflict('stat_limit');
+     if(value!==next[field])setAdminStat(next,field,value);
+    }
+    const state=advance(next,gameAt,true);
+    return {state,changed:request.fields.some(field=>settled[field]!==state[field]),
+     events:[...history(previous,settled,at),...history(settled,state,at)]};
+   });
+  },
+  async editPlayer(id,adminId,operationId,request){
+   const store=await getStore();
+   const {now:at,pauses}=await store.world.snapshot(clock);
+   const gameAt=gameTime(at,pauses);
    const state=await store.change(id,raw=>{
-    const previous=readState(raw,at);
-    const settled=advance(previous,at,true);
+    const previous=readState(raw,gameAt);
+    const settled=settleGame(previous,gameAt,pauses,at);
     const next={...settled,economy:{...settled.economy}};
     if(request.kind==='credit'){
      const balance=next.economy.balance+request.amount;
@@ -77,11 +116,11 @@ export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_
     }else{
      for(const [field,value] of Object.entries(request.values)){
       if(isEconomy(field))next.economy[field]=value;
-      else if(!next.introCompleted||(field==='health'&&next.hospital))throw conflict('player_state_changed');
-      else next[field]=value;
+      else if(field==='health'&&next.hospital)throw conflict('player_state_changed');
+      else setAdminStat(next,field,value);
      }
     }
-    const state=advance(next,at,true);
+    const state=advance(next,gameAt,true);
     return {state,events:[...history(previous,settled,at),...history(settled,state,at)],details:{
      kind:request.kind,amount:request.amount,changes:changes(fieldsOf(settled),fieldsOf(state)),
     }};
@@ -110,22 +149,46 @@ export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_
    const admin=admins.has(id);
    if(body.command.kind==='admin'&&!admin)return json(res,403,{error:'admin_required'});
    try{
-    const at=clock();
     const store=await getStore();
-    const action=body.command.kind==='admin'?{id:randomUUID(),adminId:id,at,request:'legacy-edit'}:undefined;
-    const state=await store.change(id,raw=>{
-     const previous=readState(raw,at);
-     const settled=advance(previous,at,true);
-     const state=runGameCommand(settled,body.command,at,body.location,admin);
+    const command=body.command;
+    if(command.kind==='vote'){
+     if(typeof command.pollId!=='string'||command.pollId.length!==36||!Number.isInteger(command.choice)||command.choice<0||command.choice>5){
+      return json(res,400,{error:'invalid_vote'});
+     }
+     if(!await store.world.vote(id,command.pollId,command.choice,clock))return json(res,409,{error:'poll_closed'});
+    }
+    const snapshot=await store.world.snapshot(clock);
+    const {now:at,pauses}=snapshot;
+    const gameAt=gameTime(at,pauses);
+    const paused=pauses.at(-1)?.end===null;
+    const action=command.kind==='admin'&&!paused?{id:randomUUID(),adminId:id,at,request:'legacy-edit'}:undefined;
+    let needsCharacterName=false;
+    const state=await store.change(id,(raw,registeredName)=>{
+     const previous=readState(raw,gameAt);
+     const settled=settleGame(previous,gameAt,pauses,at);
+     let state=(paused&&command.kind!=='dailyClaim')||command.kind==='vote'?settled:runGameCommand(settled,command,gameAt,body.location,admin,at,pauses);
+     let nameKey;
+     if(command.kind==='intro'&&!registeredName){
+      const name=parseCharacterName(settled.introCompleted?command.characterName:state.characterName);
+      if(name&&state.introCompleted){
+       if(settled.introCompleted)state={...state,characterName:name};
+       nameKey=characterNameKey(name);
+      }
+     }
+     needsCharacterName=state.introCompleted&&!registeredName&&!nameKey;
      const events=[...history(previous,settled,at),...history(settled,state,at)];
-     return {state,events,details:action?{kind:'edit',changes:changes(fieldsOf(settled),fieldsOf(state))}:undefined};
+     return {state,events,nameKey,details:action?{kind:'edit',changes:changes(fieldsOf(settled),fieldsOf(state))}:undefined};
     },{activeAt:at,action});
     if(!loggedFirstSave){
      loggedFirstSave=true;
      console.info('Game progress saved: first successful player write since startup');
     }
-    return json(res,200,{state});
-   }catch(error){console.error('Game state transaction failed',error);return json(res,503,{error:'game_state_unavailable'});}
+    return json(res,200,{state,needsCharacterName,world:await worldState(store,snapshot,id)});
+   }catch(error){
+    if(error.code==='character_name_taken')return json(res,409,{error:error.code});
+    console.error('Game state transaction failed',error);
+    return json(res,503,{error:'game_state_unavailable'});
+   }
   },
   close(){return database?.then(store=>store.close()).catch(()=>{});},
  };

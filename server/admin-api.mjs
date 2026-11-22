@@ -1,5 +1,6 @@
-import {adminLabels} from '../src/adminTypes.ts';
+import {adminLabels,statKeys} from '../src/adminTypes.ts';
 import {parseGiftWish} from '../src/giftWish.ts';
+import {pollLimits} from '../src/world.ts';
 import {gameSessionId} from './game-session.mjs';
 
 const uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -34,10 +35,22 @@ function playerCommand(body){
  const fields=Object.keys(body.values).sort();
  if(!fields.length||fields.some(field=>{
   const value=body.values[field];
-  const maximum=field==='balance'||field==='xp'?Number.MAX_SAFE_INTEGER:100;
-  return !Object.hasOwn(adminLabels,field)||!Number.isSafeInteger(value)||value<0||value>maximum;
+  return !Object.hasOwn(adminLabels,field)||!Number.isSafeInteger(value)||value<0;
  }))return null;
  return {kind:'edit',values:Object.fromEntries(fields.map(field=>[field,body.values[field]]))};
+}
+
+function worldCommand(body){
+ if(body?.kind==='pause'&&typeof body.paused==='boolean')return {kind:'pause',paused:body.paused};
+ if(body?.kind!=='poll'||typeof body.id!=='string'||!operationId.test(body.id)||
+  typeof body.question!=='string'||!Array.isArray(body.options)||body.options.length<2||
+  body.options.length>pollLimits.options||!Number.isSafeInteger(body.minutes)||
+  body.minutes<1||body.minutes>pollLimits.maxMinutes)return null;
+ const question=body.question.trim();
+ const options=body.options.map(value=>typeof value==='string'?value.trim():'');
+ if(!question||question.length>pollLimits.question||options.some(option=>!option||option.length>pollLimits.option)||
+  new Set(options.map(option=>option.toLowerCase())).size!==options.length)return null;
+ return {kind:'poll',id:body.id,question,options,duration:body.minutes*60_000};
 }
 
 function giftCommand(body){
@@ -72,9 +85,22 @@ export function createAdminApi({botToken,admins,game,gifts}){
     }
     if(path==='/api/admin/journal')return reply(res,200,await game.journal(page));
     if(path==='/api/admin/gifts')return reply(res,200,await gifts.adminPage(page));
+    if(path==='/api/admin/world')return reply(res,200,await game.world(adminId));
    }
-   if(req.method==='POST'&&(player||path==='/api/admin/gifts')){
+   if(req.method==='POST'&&(player||path==='/api/admin/players/adjust'||path==='/api/admin/gifts'||path==='/api/admin/world')){
     const body=await readCommand(req);
+    if(path==='/api/admin/world'){
+     const command=worldCommand(body);
+     if(!command)return reply(res,400,{error:'invalid_world_command'});
+     return reply(res,200,await game.changeWorld(adminId,command));
+    }
+    if(path==='/api/admin/players/adjust'){
+     if(typeof body?.operationId!=='string'||!operationId.test(body.operationId)||
+      !Number.isSafeInteger(body.delta)||body.delta===0||!Array.isArray(body.fields)||!body.fields.length||
+      body.fields.length>statKeys.length||body.fields.some(field=>!statKeys.includes(field))||
+      new Set(body.fields).size!==body.fields.length)return reply(res,400,{error:'invalid_admin_command'});
+     return reply(res,200,await game.adjustPlayers(adminId,body.operationId,{delta:body.delta,fields:statKeys.filter(field=>body.fields.includes(field))}));
+    }
     if(player){
      const command=playerCommand(body);
      if(!command)return reply(res,400,{error:'invalid_admin_command'});

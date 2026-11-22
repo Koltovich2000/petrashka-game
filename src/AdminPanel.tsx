@@ -52,6 +52,8 @@ export function AdminPanel({game,local,error,onSet,onChange}:{
    const roomAction=shiftedAction?.cleanupDogMessAt!==undefined
     ?{...shiftedAction,cleanupDogMessAt:shiftedAction.cleanupDogMessAt+offset}:shiftedAction;
    const dogCare=next.dogCare&&{...next.dogCare,startedAt:next.dogCare.startedAt+offset,
+    nextMessAt:next.dogCare.nextMessAt+offset,lastFedAt:next.dogCare.lastFedAt+offset,
+    diedAt:next.dogCare.diedAt===null?null:next.dogCare.diedAt+offset,
     messes:next.dogCare.messes.map(mess=>({...mess,at:mess.at+offset}))};
    return {
     ...next,updated:current.updated,born:next.born+offset,
@@ -74,7 +76,7 @@ export function AdminPanel({game,local,error,onSet,onChange}:{
    <h2 id="admin-title">Админ-панель</h2>
    <p>Ручные настройки твоего сохранения.</p>
    <form onSubmit={submit}>
-    {statKeys.map(key=>input(key,stats[key],game[key],100))}
+    {statKeys.map(key=>input(key,stats[key],game[key],Number.MAX_SAFE_INTEGER))}
     {economyKeys.map(key=>input(key,economy[key],game.economy[key],Number.MAX_SAFE_INTEGER))}
     {error&&<p role="alert">{error}</p>}
     <button type="submit" className="gold-button" disabled={saving||Object.keys(draft).length===0}>{saving?'Сохраняем…':'Сохранить настройки'}</button>

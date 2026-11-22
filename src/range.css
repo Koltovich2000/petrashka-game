@@ -1,11 +1,25 @@
-.range-screen{display:flex;flex-direction:column;gap:10px;min-height:100%;height:auto;padding-bottom:8px}
-.range-screen h1{margin:0;font-size:clamp(20px,5vw,26px)}
-.range-stage{position:relative;isolation:isolate;overflow:hidden;border:1px solid #75618f;border-radius:18px;background:#211c35;flex:none;height:clamp(590px,86dvh,960px);min-height:590px;container-type:size}
+.modern .game-page[data-screen=range]{padding-block:4px 5px}
+.range-screen{display:flex;flex-direction:column;height:100%}
+.range-stage{position:relative;isolation:isolate;overflow:hidden;border:1px solid #75618f;border-radius:18px;background:#211c35;flex:1 0 0;min-height:160px;container-type:size}
 .range-backdrop{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.range-actor{position:absolute;left:50%;bottom:10%;height:auto;width:min(118cqw,60cqh,520px);aspect-ratio:100/104;transform:translateX(-50%);touch-action:none;user-select:none;cursor:crosshair}
+.range-boundaries{
+ position:absolute;inset:0 var(--range-wall-inset) var(--range-floor-inset);pointer-events:none;
+ border:1px solid #a68fc080;border-top:0;box-shadow:inset 0 -5px 10px -8px #d6befc
+}
+.range-contact{
+ position:absolute;z-index:1;pointer-events:none;left:var(--contact-x);bottom:var(--range-floor-inset);
+ width:clamp(34px,13cqw,75px);height:10px;translate:-50% 50%;background:radial-gradient(ellipse,#ffe2a6,transparent 71%);
+ animation:range-contact .24s ease-out both
+}
+.range-contact:is([data-side=left],[data-side=right]){width:10px;height:clamp(34px,13cqw,75px);top:var(--contact-y);bottom:auto;translate:-50% -50%}
+.range-contact[data-side=left]{left:var(--range-wall-inset)}
+.range-contact[data-side=right]{left:calc(100% - var(--range-wall-inset))}
+@keyframes range-contact{from{opacity:1}to{opacity:0}}
+.range-actor{--range-actor-width:min(118cqw,60cqh,520px);position:absolute;z-index:2;left:50%;bottom:calc(var(--range-floor-inset) - .02 * var(--range-actor-width));height:auto;width:var(--range-actor-width);aspect-ratio:100/104;transform:translateX(-50%);pointer-events:none;touch-action:none;user-select:none;cursor:crosshair}
 .range-actor::after{content:'';position:absolute;z-index:-1;bottom:0;left:24%;right:24%;height:4%;border-radius:50%;background:#100d26b0;filter:blur(5px)}
+.range-motion-held::after,.range-motion-flying::after,.range-motion-returning::after{opacity:0}
 .range-reaction{position:absolute;z-index:4;left:50%;top:3%;width:max-content;max-width:82%;transform:translateX(-50%);background:#211b37dd;color:#fce7cf;padding:5px 9px;border:1px solid #8c719c;border-radius:9px;font-size:12px;text-align:center;pointer-events:none}
-.range-floating-weapon{position:absolute;z-index:3;width:31%;aspect-ratio:96/74;pointer-events:none;transition:left .09s ease-out,top .09s ease-out;transform:translate(-3%,-46%);filter:drop-shadow(2px 4px 1px #120d25a0)}
+.range-floating-weapon{position:absolute;z-index:3;width:31%;aspect-ratio:96/74;pointer-events:none;transform:translate(-3%,-46%);filter:drop-shadow(2px 4px 1px #120d25a0)}
 .range-floating-weapon[data-weapon=bat]{transform:translate(-8%,-16%)}
 .range-weapon-art,.range-weapon-art svg{display:block;width:100%;height:100%;overflow:visible;pointer-events:none}
 .range-weapon-art{transform-origin:82% 76%}
@@ -13,28 +27,27 @@
 .range-attack-bat{animation:range-swing .36s ease-out}
 .range-muzzle{animation:range-flash .23s steps(1,end) forwards}
 .range-impact{position:absolute;z-index:4;pointer-events:none;color:#ffeaa6;font-size:34px;transform:translate(-50%,-50%);animation:range-impact .3s forwards;text-shadow:0 0 10px #bb79ff}
-.range-selector{display:grid;grid-template-columns:46px 1fr 46px;align-items:center;gap:8px;width:min(100%,420px);margin-inline:auto;text-align:center}
+.range-selector{position:absolute;z-index:4;bottom:3px;left:50%;translate:-50% 0;display:grid;grid-template-columns:46px 1fr 46px;align-items:center;gap:8px;width:min(calc(100% - 14px),420px);text-align:center}
 .range-selector button{font-size:26px;min-height:43px;padding:0}
 .modern .range-selector .range-keyboard-attack{font-size:20px;background:transparent;border:0;box-shadow:none}
-.range-hint{margin:0;text-align:center;font-size:11px;color:#c7b7da}
 @keyframes range-recoil{35%{transform:translate(0,0)}50%{transform:translate(9px,3px) rotate(12deg)}}
 @keyframes range-swing{0%{transform:rotate(55deg)}40%{transform:rotate(-7deg)}65%{transform:rotate(-12deg)}100%{transform:rotate(0)}}
 @keyframes range-flash{0%,100%{opacity:0}40%,70%{opacity:1}}
 @keyframes range-impact{0%{opacity:1;scale:.7}50%{opacity:1;scale:1.25}100%{opacity:0;scale:1.5}}
-@media(prefers-reduced-motion:reduce){.range-attack-pistol,.range-attack-bat,.range-impact{animation-duration:.01s}.range-floating-weapon{transition:none}}
+@media(prefers-reduced-motion:reduce){.range-attack-pistol,.range-attack-bat,.range-impact{animation-duration:.01s}}
 /* Keep the nested atlas viewport clipped, even while its outer sprite reacts. */
 .range-actor .avatar-head>svg{overflow:hidden}
 .range-floating-weapon[data-weapon=hand]{transform:translate(-50%,-50%);opacity:.85}
 .range-motion-held{cursor:grabbing}
 .range-selector button:disabled{opacity:1;color:inherit}
 .range-avatar-rig{width:100%;height:100%;transform-origin:50% 66%;will-change:transform}
-.range-avatar-rig>.pixel-avatar{display:block;width:100%;height:100%;pointer-events:auto;overflow:visible}
+.range-avatar-rig>.pixel-avatar{display:block;width:100%;height:100%;pointer-events:none;overflow:visible}
 .range-avatar-rig [data-avatar-layer]{pointer-events:visiblePainted}
 .range-actor .arm,.range-actor .leg,.range-actor .avatar-head{transition:transform .12s ease-out}
 .range-motion-held .arm,.range-motion-held .leg,.range-motion-held .avatar-head,
 .range-motion-flying .arm,.range-motion-flying .leg,.range-motion-flying .avatar-head{transition:none}
 @media(prefers-reduced-motion:reduce){.range-actor .arm,.range-actor .leg,.range-actor .avatar-head{transition:none}}
-.range-selector{position:sticky;bottom:0;z-index:5;padding:6px 8px;border-radius:17px;background:#191e35f2;backdrop-filter:blur(8px)}
+.range-selector{padding:2px 6px;border-radius:17px;background:#191e35f2;backdrop-filter:blur(8px)}
 .range-cut-head [data-avatar-layer=head],.range-cut-right-arm [data-avatar-layer=right-arm],.range-cut-left-arm [data-avatar-layer=left-arm],.range-cut-right-leg [data-avatar-layer=right-leg],.range-cut-left-leg [data-avatar-layer=left-leg]{visibility:hidden;pointer-events:none}
 .range-piece{position:absolute;aspect-ratio:100/104;z-index:2;pointer-events:none;animation:range-piece-drop .85s ease-in forwards;transform-origin:50% 65%}
 .range-piece[data-part=head]{transform-origin:50% 25%}
@@ -44,8 +57,6 @@
 @keyframes range-piece-drop{0%{transform:translate(0,0) rotate(0)}68%{transform:translate(var(--drift),var(--drop)) rotate(var(--spin))}82%{transform:translate(var(--drift),calc(var(--drop) - 14px)) rotate(var(--spin))}100%{transform:translate(var(--drift),var(--drop)) rotate(var(--spin))}}
 @media(prefers-reduced-motion:reduce){.range-piece{animation-duration:.01s}}
 @keyframes range-piece-drop{0%{transform:translate(0,0) rotate(0)}70%{transform:translate(var(--drift),var(--drop)) rotate(var(--spin))}84%{transform:translate(var(--drift),calc(var(--drop) - 10px)) rotate(var(--spin))}100%{transform:translate(var(--drift),var(--drop)) rotate(var(--spin))}}
-.range-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.range-heading button{padding:7px 12px;font-size:12px}
 .range-cut-torso [data-avatar-layer=torso]{visibility:hidden;pointer-events:none}
 .range-piece{animation:none;aspect-ratio:auto;pointer-events:auto;transform-origin:50% 50%;touch-action:none;cursor:grab}
 .range-piece .pixel-avatar{pointer-events:none}
@@ -57,8 +68,97 @@
 .range-old-fade{opacity:0;transition:opacity .2s}
 @media(prefers-reduced-motion:reduce){.range-spawn{animation-duration:.01s}}
 @media(max-width:600px){
- .range-screen{height:100%;min-height:0;gap:6px;padding-bottom:0}
- .range-stage{flex:1 0 0;height:auto;min-height:160px}
- .range-actor{width:min(108cqw,63cqh,340px)}
- .range-selector{position:static}
+ .range-actor{--range-actor-width:min(108cqw,63cqh,340px)}
+}
+
+.range-trap-panel{
+ position:absolute;z-index:1;top:clamp(9px,5.6cqh,30px);left:clamp(7px,2.4cqw,20px);
+ display:grid;grid-template-columns:minmax(0,1fr);gap:5px;width:clamp(70px,10.5cqw,88px);padding:5px;
+ background:#1b1b31e6;border:1.5px solid #9482b1;border-radius:17px;box-shadow:0 3px 8px #110c26a0;
+}
+.modern .range-trap-panel button:not(.mascot):not(.mini-stats button){
+ display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+ min-height:clamp(44px,11cqh,57px);min-width:0;padding:2px;
+ border-radius:11px;font-size:clamp(9px,1.3cqw,11px);line-height:1.05;font-weight:650;
+}
+.range-trap-panel svg{width:clamp(21px,5.6cqh,28px);height:auto;flex:none}
+.modern .range-trap-panel button[data-running]:not(.mascot):not(.mini-stats button){
+ opacity:1;border-color:#ffc67c;background:linear-gradient(#54334a,#352741);
+ box-shadow:inset 0 0 9px #ffa96340;color:#ffe4b9;
+}
+.range-trap-panel button[data-running] svg{filter:drop-shadow(0 0 3px #ffbb72)}
+@container (max-height:220px){
+ .range-trap-panel{gap:3px;padding:4px;border-radius:12px;width:86px}
+ .modern .range-trap-panel button:not(.mascot):not(.mini-stats button){
+  flex-direction:row;gap:3px;min-height:clamp(24px,19cqh,39px);border-radius:8px
+ }
+ .range-trap-panel svg{width:17px}
+}
+
+.range-trap-actors,.range-bursts{position:absolute;inset:0;pointer-events:none}
+.range-trap-actor{
+ position:absolute;top:0;left:0;z-index:3;pointer-events:none;will-change:transform;
+ filter:drop-shadow(2px 4px 2px #151224b0);
+}
+.range-trap-actor[hidden]{display:none}
+.range-trap-actor svg{position:relative;display:block;width:100%;height:100%}
+.range-trap-actor[data-trap=spikes]{z-index:2;filter:none}
+.range-trap-actor[data-trap=fan]{z-index:2}
+.range-trap-actor[data-trap=saw]::before{
+ content:'';position:absolute;left:48%;top:43%;width:var(--saw-reach,0px);height:14%;
+ background:repeating-linear-gradient(90deg,transparent 0 15px,#463d59 15px 19px),linear-gradient(#9b91ab,#515068 68%,#312a45);
+ border:1px solid #21192c;
+}
+.range-fan-blades{animation:range-trap-spin .38s linear infinite}
+.range-saw-disc{animation:range-trap-spin .24s linear infinite}
+@keyframes range-trap-spin{to{transform:rotate(360deg)}}
+
+.range-wind{position:absolute;inset:0;width:100%;height:100%;opacity:.8}
+.range-wind path{
+ stroke:#b0ecf7;stroke-width:2.4;fill:none;stroke-opacity:.72;
+ animation:range-wind-flow .82s linear var(--wind-delay) infinite;
+}
+@keyframes range-wind-flow{
+ 0%{translate:-60px;opacity:0}
+ 14%,65%{opacity:1}
+ 100%{translate:340px;opacity:0}
+}
+
+.range-bursts{z-index:5;overflow:hidden}
+.range-burst{position:absolute;width:0;height:0}
+.range-burst i,.range-burst-flash{position:absolute;display:block;pointer-events:none}
+.range-burst i{
+ width:var(--particle-size);height:var(--particle-size);background:var(--particle-color);
+ animation:range-pixel-spray .69s cubic-bezier(.16,.56,.45,1) both;
+}
+.range-blood-splash{
+ position:absolute;width:60px;height:53px;translate:-50% -50%;
+ animation:range-blood-pop .7s ease-out both;
+}
+.range-burst[data-burst=weight] .range-blood-splash{width:84px;height:72px}
+.range-burst-flash{
+ width:34px;height:34px;translate:-50% -50%;background:#ffdfa7;
+ clip-path:polygon(48% 0,58% 32%,81% 12%,73% 39%,100% 47%,70% 59%,90% 87%,60% 75%,53% 100%,40% 72%,13% 91%,28% 60%,0 51%,31% 42%,13% 16%,41% 32%);
+ animation:range-burst-flare .27s ease-out both;
+}
+.range-burst[data-burst=weight] .range-burst-flash{width:67px;height:67px}
+@keyframes range-pixel-spray{
+ 0%{transform:translate(0,0) rotate(0) scale(.48);opacity:var(--particle-opacity)}
+ 70%{opacity:var(--particle-opacity)}
+ 100%{transform:translate(var(--particle-x),var(--particle-y)) rotate(var(--particle-spin)) scale(.7);opacity:0}
+}
+@keyframes range-blood-pop{
+ 0%{scale:.45;opacity:1}
+ 20%{scale:1;opacity:1}
+ 70%{scale:1.04;opacity:.86}
+ 100%{scale:1.2;opacity:0}
+}
+@keyframes range-burst-flare{
+ from{scale:.5;opacity:1}
+ to{scale:1.55;opacity:0}
+}
+@media(prefers-reduced-motion:reduce){
+ .range-burst i{transform:translate(calc(var(--particle-x) * .28),calc(var(--particle-y) * .28));opacity:.8}
+ .range-burst-flash{opacity:.33}
+ .range-wind{opacity:.42}
 }

@@ -1,6 +1,7 @@
-import {useRef,useState,type PointerEvent} from 'react';
+import {useEffect,useRef,useState,type PointerEvent} from 'react';
 import {AvatarHeadArt} from './AvatarHeadArt';
-import {advanceBathStroke,type BathStroke} from './bathScrub';
+import {advanceBathStroke,advanceBathSwipe,type BathStroke,type BathSwipe} from './bathScrub';
+import {playRoomSound,prepareRoomSound} from './roomSoundEffects';
 
 type Point={x:number;y:number};
 const spongeRest={x:.89,y:.566};
@@ -47,14 +48,15 @@ export function BathScene({onScrub,onFinish}: {onScrub:()=>void;onFinish:()=>voi
 
 function BathSponge({onScrub,onContact}:{onScrub:()=>void;onContact:(rubbing:boolean)=>void}){
  const scene=useRef<HTMLDivElement>(null);
- const gesture=useRef<{id:number;stroke:BathStroke|null}|null>(null);
+ const gesture=useRef<{id:number;stroke:BathStroke|null;swipe:BathSwipe|null}|null>(null);
  const [position,setPosition]=useState(spongeRest);
  const [held,setHeld]=useState(false);
+ useEffect(()=>{void prepareRoomSound('sponge').catch(()=>{});},[]);
 
  function grab(event:PointerEvent<HTMLButtonElement>){
   if(event.button!==0||gesture.current)return;
   event.currentTarget.setPointerCapture(event.pointerId);
-  gesture.current={id:event.pointerId,stroke:null};
+  gesture.current={id:event.pointerId,stroke:null,swipe:null};
   setHeld(true);
  }
  function move(event:PointerEvent<HTMLButtonElement>){
@@ -64,10 +66,12 @@ function BathSponge({onScrub,onContact}:{onScrub:()=>void;onContact:(rubbing:boo
   setPosition({x:Math.max(.05,Math.min(.95,point.x)),y:Math.max(.05,Math.min(.91,point.y))});
   const contact=onPetrashka(point);
   onContact(contact);
-  if(!contact){drag.stroke=null;return;}
+  if(!contact){drag.stroke=null;drag.swipe=null;return;}
   const cursor={x:event.clientX-field.left,y:event.clientY-field.top};
   drag.stroke??={start:cursor,direction:null,peak:0};
+  drag.swipe??={edge:cursor,direction:null};
   const distance=Math.max(14,Math.min(28,field.width*.045));
+  if(advanceBathSwipe(drag.swipe,cursor,distance))playRoomSound('sponge');
   if(advanceBathStroke(drag.stroke,cursor,distance))onScrub();
  }
  function release(event:PointerEvent<HTMLButtonElement>){
@@ -81,7 +85,7 @@ function BathSponge({onScrub,onContact}:{onScrub:()=>void;onContact:(rubbing:boo
   <button type="button" className="bath-sponge" aria-label="Мочалка" aria-description="Проведи мочалкой по Петрашке туда и обратно" data-held={held}
    style={{left:`${position.x*100}%`,top:`${position.y*100}%`}}
    onPointerDown={grab} onPointerMove={move} onPointerUp={release} onPointerCancel={release}
-   onLostPointerCapture={release} onClick={event=>{if(event.detail===0)onScrub();}}>
+   onLostPointerCapture={release} onClick={event=>{if(event.detail===0){playRoomSound('sponge');onScrub();}}}>
    <svg viewBox="0 0 32 32" shapeRendering="crispEdges" aria-hidden="true">
     <path d="M7 7H25V10H29V22H25V25H7V22H3V10H7Z" fill="#ffc34e" stroke="#40233b" strokeWidth="2"/>
     <path d="M8 10H25V12H15V14H6V12H8Z" fill="#ffed98"/>

@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {RangePart} from './rangeDamage';
+import {rangeFloor,wallInset} from './rangeContacts';
 export type Piece={id:number;part:RangePart;x:number;y:number;w:number;h:number;vx:number;vy:number;angle:number;spin:number;viewBox:string;landed?:boolean};
 export function useRangePieces(onLand:(p:Piece,all:boolean)=>void){
  const landed=useRef(onLand);landed.current=onLand;
@@ -14,11 +15,12 @@ export function useRangePieces(onLand:(p:Piece,all:boolean)=>void){
    let moving=false;const landedNow:Piece[]=[];
    for(const p of pieces.current){
     p.vy+=1500*dt;let dx=p.vx*dt,dy=p.vy*dt;const {w,h}=size.current;
+    const left=w*wallInset,right=w-left,floor=rangeFloor(h);
     p.x+=dx;p.y+=dy;
-    if(p.x<0){p.x=0;p.vx=Math.abs(p.vx)*.4;}
-    if(p.x+p.w>w){p.x=w-p.w;p.vx=-Math.abs(p.vx)*.4;}
+    if(p.x<left){p.x=left;p.vx=Math.abs(p.vx)*.4;}
+    if(p.x+p.w>right){p.x=right-p.w;p.vx=-Math.abs(p.vx)*.4;}
     if(p.y<0){p.y=0;p.vy=Math.abs(p.vy)*.4;}
-    if(p.y+p.h>h*.91){if(!p.landed){p.landed=true;landedNow.push(p);}p.y=h*.91-p.h;p.vy=Math.abs(p.vy)<65?0:-p.vy*.28;p.vx*=.86;p.spin*=.82;}
+    if(p.y+p.h>floor){if(!p.landed){p.landed=true;landedNow.push(p);}p.y=floor-p.h;p.vy=Math.abs(p.vy)<65?0:-p.vy*.28;p.vx*=.86;p.spin*=.82;}
     p.angle+=p.spin*dt;
     if(Math.abs(p.vx)>1||Math.abs(p.vy)>1)moving=true;
    }

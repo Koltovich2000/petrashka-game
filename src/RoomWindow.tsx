@@ -34,21 +34,16 @@ export function RoomWindow(){
 
 export function HallWindow(){
  const panes=useId();
- return <><svg className="hall-window" viewBox="0 0 512 768" preserveAspectRatio="none" aria-hidden="true">
+ return <svg className="hall-window" viewBox="0 0 440 660" preserveAspectRatio="none" aria-hidden="true">
   <defs>
    <clipPath id={panes}>
-    <path d="M150 47H194V90H147Z M204 47H310V90H204Z M321 47H370L374 90H321Z M146 101H194V273H187L187 253L175 235L159 225L143 225L125 230Z M204 101H309V273H204Z M321 101H374L384 239L374 234L365 228H351L337 237L330 252L333 262L342 273H321Z"/>
+    <path d="M88 40H166V77H88Z M176 40H266V77H176Z M276 40H351V77H276Z M88 86H166V234H88Z M176 86H266V234H176Z M276 86H351V234H276Z"/>
    </clipPath>
   </defs>
   <g clipPath={`url(#${panes})`}>
-   <svg x="117" y="46" width="271" height="228" viewBox="9 10 142 110" preserveAspectRatio="none">
+   <svg x="88" y="40" width="263" height="194" viewBox="9 10 142 110" preserveAspectRatio="none">
     <WindowView/>
    </svg>
   </g>
- </svg>
- <svg className="room-lamp-off" viewBox="0 0 320 480" preserveAspectRatio="none" aria-hidden="true" shapeRendering="crispEdges">
-  <path d="M5 137L17 113L35 113L49 138L47 143H6Z" fill="#997467" stroke="#48293c" strokeWidth="1.3"/>
-  <path d="M8 138L19 115H22L15 138ZM31 115H34L46 138H38Z" fill="#b49279"/>
-  <path d="M6 140H48V144H6Z" fill="#765246" stroke="#48293c" strokeWidth=".8"/>
- </svg></>;
+ </svg>;
 }

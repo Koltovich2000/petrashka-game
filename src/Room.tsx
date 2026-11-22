@@ -1,31 +1,34 @@
-import {ToiletScene,type ToiletPhase} from './ToiletScene';
+import {ToiletRearAvatar,ToiletScene,type ToiletPhase} from './ToiletScene';
 import {ComputerScene} from './ComputerScene';
 import {BathScene} from './BathScene';
 import {BallScene} from './BallScene';
 import {YogaScene} from './YogaScene';
 import {SleepScene} from './SleepScene';
-import {Dog} from './Dog';
+import {Dog,type DogBallPartner} from './Dog';
 import {FoodPicture} from './FoodTray';
 import type {FoodId} from './balance';
 import {HallWindow,RoomWindow} from './RoomWindow';
 import {roomLighting} from './roomLighting';
 import {RoomObjects} from './RoomObjects';
 import {activities,activityLocation,activityReason,locationLabels,BATH_READY_AT,type ActivityKind,type FurnitureId,type Location} from './activities';
-import {HygieneEffects,PixelPoop} from './HygieneEffects';
+import {HygieneEffects,PixelPoop,PixelPuddle} from './HygieneEffects';
 import type {Action,Game} from './game';
 import type {CareMode} from './HomeScreen';
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type AnimationEvent, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { PixelAvatar } from './PixelAvatar';
 import type { Outfit } from './wardrobe';
 import {hairWetness} from './hair';
 import { bodyPart, reactions, type Hit } from './body';
 import { sound, unlockSound, muteSound, isSoundMuted } from './sound';
 import {playHitSound,prepareHitSound,stopHitSound} from './hitSound';
+import {playRoomSound,prepareRoomSound} from './roomSoundEffects';
 import { haptic } from './telegram';
 import './room-scenes.css';
 const messPosition=.71;
 const doorWalkMs=620;
 const sleepWalkMs=740;
+const toiletWalkMs=1500;
+const toiletUseAt=2900;
 const dumbbellApproachMs=820;
 const dumbbellPickupMs=390;
 const dumbbellGripAt=dumbbellApproachMs+dumbbellPickupMs;
@@ -36,7 +39,7 @@ type Motion={x:number;y:number;vx:number;vy:number;tilt:number;phase:Phase;elaps
 const resting=():Motion=>({x:0,y:0,vx:0,vy:0,tilt:0,phase:'idle',elapsed:0,direction:1});
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
 interface Props {
- foodTray?:ReactNode; playTray?:ReactNode; location:Location; onLocationChange:(location:Location)=>void;onEnterRoom:()=>void;
+ statHud:ReactNode; foodTray?:ReactNode; playTray?:ReactNode; location:Location; onLocationChange:(location:Location)=>void;onEnterRoom:()=>void;
  game:Game;onActivity:(kind:ActivityKind,dogMessAt?:number)=>void;onCancelActivity:()=>void;onMove:(id:FurnitureId,x:number,y:number)=>void;
  onWashStroke:(id:string)=>void;onBallReturn:(id:string)=>void;
  active:boolean; hygiene:number; onWake:()=>void; outfit:Outfit; state:string; status:string; speech:string;
@@ -46,10 +49,12 @@ interface Props {
 export function Room(p:Props){
  const {location}=p;
  const stage=useRef<HTMLElement>(null);const actor=useRef<HTMLDivElement>(null);const m=useRef(resting());const [motion,setMotion]=useState(resting);
+ const dogBallPartner=useRef<DogBallPartner>(null);
  const [muted,setMuted]=useState(isSoundMuted);const [hitCount,setHitCount]=useState(0);
  const [hit,setHit]=useState<Hit>('head');
  const [bathArrived,setBathArrived]=useState<string|null>(null);
  const [dumbbellClock,setDumbbellClock]=useState<{id:string;elapsed:number}|null>(null);
+ const [toiletClock,setToiletClock]=useState<{id:string;elapsed:number}|null>(null);
  const [sleepWalking,setSleepWalking]=useState(false);
  const wasSleeping=useRef(p.sleeping);
  const props=useRef(p);props.current=p;
@@ -63,6 +68,9 @@ export function Room(p:Props){
   setMotion({...m.current});p.onBusy(true);
  }
  useEffect(()=>{if(!p.active)reset();},[p.active]);
+ useEffect(()=>{
+  if(p.active&&!muted)for(const kind of ['footstep','eating'] as const)void prepareRoomSound(kind).catch(()=>{});
+ },[p.active,muted]);
  useLayoutEffect(()=>{
   const justStarted=p.sleeping&&!wasSleeping.current;
   wasSleeping.current=p.sleeping;
@@ -148,6 +156,22 @@ export function Room(p:Props){
 
  const activeAction=p.game.roomAction;
  const actionKind=activeAction?.kind;
+ const toiletAction=location==='bathroom'&&actionKind==='toilet'?activeAction:null;
+ const toiletId=toiletAction?.id,toiletStarted=toiletAction?.started;
+ useLayoutEffect(()=>{
+  if(toiletId===undefined||toiletStarted===undefined||!p.active)return;
+  const id=toiletId,started=toiletStarted;
+  const origin=performance.now()-Math.max(0,props.current.game.updated-started);
+  let timer:number|undefined;
+  function sync(){
+   const elapsed=performance.now()-origin;
+   setToiletClock({id,elapsed});
+   const next=elapsed<toiletWalkMs?toiletWalkMs:elapsed<toiletUseAt?toiletUseAt:undefined;
+   if(next!==undefined)timer=window.setTimeout(sync,next-elapsed);
+  }
+  sync();
+  return()=>window.clearTimeout(timer);
+ },[toiletId,toiletStarted,p.active]);
  const bathAction=activeAction?.kind==='bath'?activeAction:null;
  const yogaAction=location==='hall'&&activeAction?.kind==='yoga'&&p.state!=='faint'?activeAction:null;
  const dumbbellAction=location==='hall'&&activeAction?.kind==='dumbbells'&&p.state!=='faint'?activeAction:null;
@@ -187,9 +211,11 @@ export function Room(p:Props){
  const secondsLeft=statusEnd===undefined?0:Math.max(0,Math.ceil((statusEnd-updated)/1000));
  const showActivity=p.state!=='faint'&&(activeAction?.ends===null||secondsLeft>0);
  const elapsed=activeAction?Math.max(0,updated-activeAction.started):0;
- const toiletPhase:ToiletPhase|null=actionKind==='toilet'?(elapsed<1500?'approach':elapsed<2900?'open':'use'):null;
+ const toiletElapsed=toiletClock&&toiletClock.id===toiletId?toiletClock.elapsed:elapsed;
+ const toiletPhase:ToiletPhase|null=toiletAction?(toiletElapsed<toiletWalkMs?'approach':toiletElapsed<toiletUseAt?'open':'use'):null;
+ const toiletOnFloor=toiletPhase!==null;
  const cleaning=actionKind==='clean';
- const approaching=bathAction?bathWalking:activeAction&&actionKind!=='dumbbells'&&elapsed<(cleaning?650:1500);
+ const approaching=toiletPhase?toiletPhase==='approach':bathAction?bathWalking:activeAction&&actionKind!=='dumbbells'&&elapsed<(cleaning?650:1500);
  const scrubbing=cleaning&&!approaching;
  const cleanupReason=activityReason(p.game,'clean',location);
  const dogMesses=(p.game.dogCare?.messes??[]).filter(mess=>mess.location===location);
@@ -200,9 +226,9 @@ export function Room(p:Props){
  const ballStep=clamp(roomWidth*.055,16,42);
  // Leave room for the raised right boot and the ball when stepping toward the left edge.
  const ballX=roomWidth?Math.max(.30,((actor.current?.clientWidth??0)*.36+ballStep+43)/roomWidth):.30;
- const activityX=objectPoint?objectPoint.x:actionKind==='toilet'?.24:actionKind==='computer'?.76:actionKind==='ball'?ballX:p.sleeping?.23:.5;
+ const activityX=objectPoint?objectPoint.x:actionKind==='computer'?.76:actionKind==='ball'?ballX:p.sleeping?.23:.5;
  const activityY=dogMessTarget?roomHeight*(dogMessTarget.y-1)+49:
-  roomHeight*(objectPoint?objectPoint.y-.90:actionKind==='toilet'?-.27:actionKind==='computer'?-.08:p.sleeping?-.12:0);
+  roomHeight*(objectPoint?objectPoint.y-.90:actionKind==='computer'?-.08:p.sleeping?-.12:0);
  const activityOffset=cleaning
   ?roomWidth*((dogMessTarget?.x??messPosition)-.5)-(actor.current?.clientWidth??0)*.28
   :roomWidth*(activityX-.5);
@@ -216,25 +242,36 @@ export function Room(p:Props){
  const roomStyle=dumbbellPhase?{
   ...walkStyle,'--pickup-duration':`${dumbbellPickupMs}ms`,
   '--pickup-delay':`${Math.min(0,(dumbbellPhase==='stand'?dumbbellGripAt:dumbbellApproachMs)-dumbbellElapsed)}ms`,
- } as CSSProperties:actionKind==='ball'?{'--ball-step-size':`${ballStep}px`} as CSSProperties:walkStyle;
+ } as CSSProperties:actionKind==='ball'?{'--ball-step-size':`${ballStep}px`} as CSSProperties:toiletOnFloor?{
+  '--toilet-walk-duration':`${toiletWalkMs}ms`,'--toilet-walk-delay':`${-toiletElapsed}ms`,
+  '--toilet-lift-duration':`${toiletUseAt-toiletWalkMs}ms`,'--toilet-lift-delay':`${-Math.max(0,toiletElapsed-toiletWalkMs)}ms`,
+ } as CSSProperties:walkStyle;
  const busy=motion.phase!=='idle';
  const eatingFood=!busy&&!activeAction&&!p.sleeping&&p.state!=='faint'?p.eatenFood:null;
- const avatarPose=sceneWalking||approaching?'walking':dumbbellPhase==='reach'?'dumbbell-reach':dumbbellPhase==='stand'?'dumbbell-stand':eatingFood?'eating':actionKind??motion.phase;
+ const avatarPose=sceneWalking||approaching?'walking':toiletPhase==='open'?'idle':dumbbellPhase==='reach'?'dumbbell-reach':dumbbellPhase==='stand'?'dumbbell-stand':eatingFood?'eating':actionKind??motion.phase;
+ function stepSound(event:AnimationEvent<HTMLElement>){
+  if(!p.active||muted||event.animationName!=='leg-step'||!(event.target instanceof SVGElement))return;
+  const leg=event.target;
+  if(!leg.matches('.leg')||!leg.closest('.pose-walking,.pose-carry')||getComputedStyle(leg).visibility!=='visible')return;
+  // The left foot starts halfway through the cycle and lands at its first iteration.
+  if(event.type==='animationstart'&&!leg.matches('.leg-right'))return;
+  playRoomSound('footstep');
+ }
  const phaseText={idle:actionKind?activities[actionKind].name+'…':p.speech,dragging:'А-а-а! Осторожнее! 😳',falling:'Ой, падаю!',landed:'Упс… Я в порядке!', 'getting-up':'Сейчас, сейчас… встаю!',walking:'Топ-топ… обратно в центр',reacting:reactions[hit].text,door:'Идёт в комнату'}[motion.phase];
  function select(id:Location,force=false){if(!force&&(p.game.roomAction||m.current.phase==='door'||sleepWalking))return;reset();p.onLocationChange(id);}
- return <><section ref={stage} className={'room photo-room '+(!sceneWalking&&(p.foodTray||p.playTray||eatingFood)?' feeding':'')+(sceneWalking?' scene-walk':'')+(sleepWalking?' sleep-walk':'')+(asleep?' sleeping-in-bed':'')+(bathSoaking?' bath-phase-soak':'')+(toiletPhase?' toilet-phase-'+toiletPhase:'')+(actionKind==='computer'&&!approaching?' computer-playing':'')+(actionKind==='ball'?' ball-playing':'')+(yogaAction?' yoga-active':'')} style={roomStyle} aria-label="Комната Петрашки" data-location={location} data-lighting={roomLighting(updated)} data-dumbbells={dumbbellPhase??undefined}>
+ return <><section ref={stage} className={'room photo-room '+(!sceneWalking&&p.playTray?' choosing-play':'')+(sceneWalking?' scene-walk':'')+(sleepWalking?' sleep-walk':'')+(asleep?' sleeping-in-bed':'')+(bathSoaking?' bath-phase-soak':'')+(toiletPhase?' toilet-phase-'+toiletPhase:'')+(actionKind==='computer'&&!approaching?' computer-playing':'')+(actionKind==='ball'?' ball-playing':'')+(yogaAction?' yoga-active':'')} style={roomStyle} aria-label="Комната Петрашки" data-location={location} data-lighting={roomLighting(updated)} data-dumbbells={dumbbellPhase??undefined} onAnimationStart={stepSound} onAnimationIteration={stepSound}>
  <RoomObjects game={p.game} location={location} onActivity={p.onActivity} onSleep={()=>p.onCare('sleep')} onWake={p.onWake} onMove={p.onMove} onDoor={walkToDoor} doorDisabled={busy} holdingDumbbells={holdingDumbbells}/>
  <div className="location-photo pixel-location" role="img" aria-label={locationLabels[location]}/>
  {location==='room'&&<RoomWindow/>}
  {location==='hall'&&<HallWindow/>}
  <div className="room-light" aria-hidden="true"/>
- {p.game.dog&&p.active&&<Dog updated={updated} location={location}/>}
+ {p.game.dog&&p.active&&<Dog updated={updated} location={location} ballPartner={dogBallPartner}/>}
  {asleep&&location==='room'&&<SleepScene outfit={p.outfit} wetness={wetness}/>}
  {asleep&&<button className="wake-button" onClick={p.onWake}>☀ Разбудить</button>}
  <span className="scene-day">День {p.day}</span>
  {actionKind==='computer'&&!approaching&&<ComputerScene elapsed={elapsed} wetness={wetness}/>}
  {bathSoaking&&bathAction&&p.active&&p.state!=='faint'&&<BathScene key={bathAction.id} onScrub={()=>p.onWashStroke(bathAction.id)} onFinish={p.onCancelActivity}/>}
- {toiletPhase&&location==='bathroom'&&<ToiletScene phase={toiletPhase} visit={activeAction?.toiletVisit==='poop'?'poop':'pee'} outfit={p.outfit} wetness={wetness}/>}
+ {toiletPhase&&<ToiletScene phase={toiletPhase} active={p.active} muted={muted}/>}
  {yogaAction&&p.active&&p.game.furniture.yoga&&<YogaScene key={yogaAction.id} started={yogaAction.started} seed={yogaAction.yogaSeed} stored={p.game.furniture.yoga} outfit={p.outfit} hygiene={p.hygiene} wetness={wetness}/>}
  {toiletPhase&&showActivity&&<div className="bath-countdown">
   <strong>{toiletPhase==='approach'?'Идёт к унитазу':toiletPhase==='open'?'Поднимает крышку':'В туалете'}</strong>
@@ -242,6 +279,7 @@ export function Room(p:Props){
   <button type="button" className="cancel-activity" onClick={p.onCancelActivity}>Отменить</button>
  </div>}
  <button className="sound-toggle" aria-label={muted?'Включить звук':'Выключить звук'} onClick={()=>{setMuted(!muted);muteSound(!muted);if(!muted)stopHitSound();else unlockSound();}}>{muted?'🔇':'🔊'}</button>
+ {p.statHud}
  {p.game.floorMess[location]&&<button type="button" className={`floor-mess${scrubbing&&!dogMessTarget?' scrubbing':''}`}
   style={{left:`${messPosition*100}%`}} aria-label="Убрать какашки с пола" title={cleanupReason||'Убрать какашки с пола'}
   disabled={busy||Boolean(cleanupReason)} onClick={()=>p.onActivity('clean')}>
@@ -251,12 +289,12 @@ export function Room(p:Props){
   const reason=activityReason(p.game,'clean',location,mess.at);
   const isScrubbing=scrubbing&&dogMessTarget?.at===mess.at;
   return <button key={mess.at} type="button" className={`floor-mess dog-mess${isScrubbing?' scrubbing':''}`}
-   style={{left:`${mess.x*100}%`,top:`${mess.y*100}%`}} aria-label="Убрать за собакой" title={reason||'Убрать за собакой'}
+   style={{left:`${mess.x*100}%`,top:`${mess.y*100}%`}} aria-label={mess.kind==='pee'?'Вытереть лужу за собакой':'Убрать кучку за собакой'} title={reason||'Убрать за собакой'}
    disabled={busy||Boolean(reason)} onClick={()=>p.onActivity('clean',mess.at)}>
-   <PixelPoop/>{isScrubbing&&<><i/><i/></>}
+   {mess.kind==='pee'?<PixelPuddle/>:<PixelPoop/>}{isScrubbing&&<><i/><i/></>}
   </button>;
  })}
- <div className="floor-shadow" aria-hidden="true" style={{transform:`translate(calc(-50% + ${motion.x+(actionKind==='ball'||actionKind==='dumbbells'?activityOffset:0)}px),${actionKind==='dumbbells'?activityY:0}px) scale(${Math.max(.45,1+motion.y/400)})`,opacity:Math.max(.15,.55+motion.y/500)} as CSSProperties}/>
+ <div className="floor-shadow" aria-hidden="true" style={{transform:toiletOnFloor?undefined:`translate(calc(-50% + ${motion.x+(actionKind==='ball'||actionKind==='dumbbells'?activityOffset:0)}px),${actionKind==='dumbbells'?activityY:0}px) scale(${Math.max(.45,1+motion.y/400)})`,opacity:Math.max(.15,.55+motion.y/500)}}/>
  <div ref={actor} className={'actor-position motion-'+motion.phase+(actionKind?' activity-'+actionKind:'')+(p.sleeping?' activity-sleep':'')+(p.state==='faint'?' is-dead':'')} style={{'--x':`${motion.x+activityOffset}px`,'--y':`${motion.y+activityY}px`,'--tilt':`${motion.tilt}deg`,'--direction':motion.direction,'--hit-x':`${(reactions[hit].cell%3)*50}%`,'--hit-y':`${Math.floor(reactions[hit].cell/3)*50}%`} as CSSProperties}>
  {showActivity&&!bathAction&&!toiletPhase&&<div className={`actor-activity${training?' training-cancel':''}`}>
   {!training&&<><strong>{statusLabel}</strong>
@@ -267,7 +305,10 @@ export function Room(p:Props){
  </div>}
  {p.state!=='faint'&&!showActivity&&!sceneWalking&&!asleep&&(busy||['hungry','sick','dirty','tired','sad'].includes(p.state)||p.speech!==p.status)&&<div className="speech" aria-live="polite">{phaseText}</div>}
  <button disabled={p.state==='faint'} className={`mascot ${p.state} ${busy?'':p.effect}`} aria-label="Петрашка: проведите по голове, чтобы погладить, или потяните за туловище, чтобы поднять" onPointerDown={down} onPointerMove={move} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(e.detail===0&&!busy&&p.canPet&&!p.careMode)p.onCare('pet');}}>
- <span key={dumbbellPhase??(p.effect==='pet'?`pet-${p.game.cares}`:hitCount)} className="layered-character" role="img" aria-label={`Петрашка: ${busy?phaseText:p.status}`}><PixelAvatar outfit={p.outfit} state={actionKind==='ball'||sleepWalking||eatingFood?'happy':p.state} pose={avatarPose} hit={hit} hygiene={p.hygiene} wetness={wetness}/></span>
+ <span key={dumbbellPhase??(p.effect==='pet'?`pet-${p.game.cares}`:hitCount)} className="layered-character" role="img" aria-label={`Петрашка: ${busy?phaseText:p.status}`}>
+  {toiletPhase==='use'?<ToiletRearAvatar outfit={p.outfit} wetness={wetness}/>
+   :<PixelAvatar outfit={p.outfit} state={actionKind==='ball'||sleepWalking||eatingFood?'happy':p.state} pose={avatarPose} hit={hit} hygiene={p.hygiene} wetness={wetness}/>}
+ </span>
  {eatingFood&&<span className="eating-food" aria-hidden="true">
   <FoodPicture id={eatingFood}/>
   <span className="food-crumbs"><i/><i/><i/><i/></span>
@@ -280,7 +321,7 @@ export function Room(p:Props){
  {motion.phase==='dragging'&&<span className="fright" aria-hidden="true">!</span>}
  </div>
  {p.active&&location==='hallway'&&activeAction?.kind==='ball'&&!approaching&&
-  <BallScene key={activeAction.id} actor={actor} round={activeAction.returns} onReturn={()=>p.onBallReturn(activeAction.id)}/>}
+  <BallScene key={activeAction.id} actor={actor} dogPartner={dogBallPartner} round={activeAction.returns} onReturn={()=>p.onBallReturn(activeAction.id)}/>}
  {!busy&&!p.sleeping&&p.particles.length>0&&<div key={p.effect==='pet'?p.game.cares:p.effect} className={'particles '+p.effect} aria-hidden="true">{p.particles.map((symbol,i)=><span key={i}>{symbol}</span>)}</div>}
  {!busy&&!p.sleeping&&p.gain&&<div className="effect-gain" role="status">{p.gain}</div>}
  {!sceneWalking&&p.foodTray}

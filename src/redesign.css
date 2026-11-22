@@ -25,7 +25,7 @@
  border-radius:0 0 23px 23px;box-shadow:0 5px 14px #080c20a0;
 }
 .player-portrait{width:47px;height:auto;aspect-ratio:1;flex:none;image-rendering:pixelated}
-.player-identity{flex:1;min-width:0}.player-identity>strong{font-size:clamp(15px,4.5vw,20px);line-height:1.1}
+.player-identity{flex:1;min-width:0}.player-identity>strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(15px,4.5vw,20px);line-height:1.1}
 .player-xp{display:flex;align-items:center;gap:6px;margin-top:4px;color:#ffdb89;font-size:11px;white-space:nowrap}
 .xp-track{position:relative;width:min(100%,150px);height:15px;display:grid;place-items:center;color:white;font-weight:750;font-size:9px}
 .xp-track progress,.stat-card progress{appearance:none;border:0;border-radius:20px;overflow:hidden;background:#464965}
@@ -45,17 +45,19 @@
 .modern .bottom-nav button:not([aria-current]){color:#cbd0e4;border-color:transparent;box-shadow:none;background:none}
 .modern .bottom-nav button:not([aria-current]) .game-icon{filter:grayscale(.8)}
 .home-layout{min-height:100%;display:flex;flex-direction:column;gap:8px}
-.stat-deck{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
-.stat-card{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 6px;padding:8px;border:1.5px solid #575b80;border-radius:13px;background:#252944;min-width:0}
-.stat-card .pixel-icon{width:25px;height:25px}
-.stat-card span,.stat-card strong{display:block;line-height:1.12}
-.stat-card span{font-size:11px;color:#d2d6e5;overflow-wrap:anywhere}
-.stat-card strong{font-size:17px}
-.stat-card progress{grid-column:1/-1;width:100%;height:6px}
-.stat-card progress::-webkit-progress-value{background:var(--stat-color,#ffc05a);border-radius:20px}
-.stat-card:nth-child(1){--stat-color:#ed526b}.stat-card:nth-child(3){--stat-color:#9bd65a}.stat-card:nth-child(5){--stat-color:#61c9ee}
-.stat-card[data-recovering=true]{border-color:var(--stat-color,#ffc05a);animation:stat-recovery 1.2s ease-in-out infinite}
-@keyframes stat-recovery{25%,70%{filter:brightness(1.27);box-shadow:inset 0 0 10px #ffffff23}}
+.stat-deck{
+ position:absolute;z-index:11;top:max(48px,12%);left:clamp(10px,4%,32px);
+ display:grid;gap:6px;width:clamp(82px,14%,110px);pointer-events:none
+}
+.stat-card{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:2px 6px}
+.stat-card .pixel-icon{grid-row:span 2;width:27px;height:27px}
+.stat-card strong{font-size:15px;line-height:1;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px #160e24;overflow-wrap:anywhere}
+.stat-card progress{width:100%;height:8px;border:1px solid #21192d;box-shadow:0 1px 2px #160e24ae}
+.stat-card progress::-webkit-progress-bar{background:#46405a}
+.stat-card progress::-webkit-progress-value{background:var(--stat-color);border-radius:20px}
+.stat-card progress::-moz-progress-bar{background:var(--stat-color);border-radius:20px}
+.stat-card[data-recovering=true] progress{animation:stat-recovery 1.2s ease-in-out infinite}
+@keyframes stat-recovery{25%,70%{box-shadow:0 0 8px var(--stat-color)}}
 .modern .home-layout .photo-room{flex:1 0 auto;height:clamp(300px,calc(100dvh - 318px),610px);padding:0;border:0;border-radius:20px;clip-path:none;background:#151e42;box-shadow:0 10px 32px #080a20a6}
 .modern .photo-room .location-photo{inset:0;clip-path:none}
 .modern .photo-room[data-location=room] .location-photo{background:#142044 url('/assets/bedroom-navy.png?scene=navy') center bottom/100% 100% no-repeat}
@@ -96,11 +98,9 @@
 .modern .outfit-details::before{content:none}.modern .outfit-details button{padding:7px 10px}
 @media(max-width:520px){
  .modern .game-page{padding:8px max(8px,var(--app-safe-right)) 10px max(8px,var(--app-safe-left))}
- .stat-card{grid-template-columns:1fr;justify-items:center;gap:2px;padding:5px 2px;text-align:center}
- .stat-card .pixel-icon{width:20px;height:20px}.stat-card span{font-size:8px}.stat-card strong{font-size:14px}.stat-card progress{height:5px}
  .modern .clothes-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
 }
-@media(max-width:350px){.player-bar{gap:5px;padding-inline:7px}.player-portrait{width:37px}.player-wallet{padding-inline:5px}.stat-deck{gap:3px}.quick-actions{gap:3px}}
+@media(max-width:350px){.player-bar{gap:5px;padding-inline:7px}.player-portrait{width:37px}.player-wallet{padding-inline:5px}.quick-actions{gap:3px}}
 @media(prefers-reduced-motion:reduce){.modern *{animation:none!important;transition:none!important}}
 
 .modern .bottom-nav button:not([aria-current]):not(.mascot):not(.mini-stats button){background:transparent;border-color:transparent;box-shadow:none}
@@ -185,19 +185,26 @@
 .modern button.arrange-toggle:not(.mascot):not(.mini-stats button){position:absolute;top:47px;right:8px;z-index:12;padding:6px;font-size:10px}
 .modern .actor-position[class*="activity-"]{transition:transform 1.2s ease-in-out}
 @keyframes foam-bob{50%{transform:translateY(-7px)}}
-.pose-toilet .leg{transform:translate(0,-5px) rotate(45deg)}
 .pose-computer .leg{transform:translate(6px,2px) rotate(-68deg) scaleY(.82)}
 .pose-computer .arm{animation:typing .45s steps(2) infinite}
-.pose-computer .arm-left{animation-delay:-.22s}.pose-toilet .arm,.pose-tray .arm{transform:rotate(15deg)}
+.pose-computer .arm-left{animation-delay:-.22s}.pose-tray .arm{transform:rotate(15deg)}
 @keyframes typing{0%,100%{transform:rotate(-64deg)}50%{transform:rotate(-78deg)}}
 .screen-spark{position:absolute;right:8%;top:52%;color:#91e1ff;animation:foam-bob .6s infinite}
 .toilet-spark{position:absolute;left:41%;top:78%;color:#f9d864;transform:rotate(75deg);animation:wet-drip 1s steps(5) infinite;pointer-events:none}
-.furniture-catalog{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.furniture-catalog article{background:#262a45;border:1px solid #65638b;border-radius:17px;padding:14px;margin-bottom:12px}.furniture-catalog .furniture-art{max-width:180px;margin:auto}.furniture-catalog h2{font-size:18px}.furniture-catalog p{font-size:12px;color:#c5c6dc}.furniture-catalog button{padding:10px;width:100%}
+.furniture-catalog{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.furniture-catalog article{display:flex;flex-direction:column;background:#262a45;border:1px solid #65638b;border-radius:17px;padding:14px}
+.furniture-catalog .furniture-art{width:100%;height:100px;margin:auto}
+.furniture-catalog .furniture-art[data-decor-art=curtains]{max-width:116px}
+.furniture-catalog :is(h3,h4){margin:12px 0;font-size:17px;overflow-wrap:anywhere}
+.furniture-catalog p{margin:0 0 12px;font-size:12px;color:#c5c6dc}
+.furniture-catalog button{padding:10px;width:100%;margin-top:auto}
+.shop-room{margin-top:22px}
+.dog-adoption form,.dog-shelter-actions{display:grid;gap:9px}
+.dog-adoption input{min-width:0;width:100%;padding:10px 12px;border:1px solid var(--stroke);border-radius:11px;background:#1a2039;color:inherit;font:inherit;font-size:16px}
+.dog-adoption input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){.modern .actor-position[class*="activity-"]{transition:none}}
 .activity-sleep .mascot,.actor-position[class*="activity-"] .mascot{pointer-events:none}
 
-.shop-sections{display:flex;gap:8px;margin-bottom:14px}
-.shop-sections button{padding:8px 12px}
 .modern .bottom-nav button{min-width:0;padding-inline:2px}
 @media(max-width:360px){.modern .bottom-nav button{font-size:9px}}
 
@@ -257,8 +264,6 @@
 @media(max-width:360px){.scene-food-grid small{white-space:normal}}
 
 .scene-food{display:flex;align-items:center;gap:clamp(6px,2vw,18px);width:min(calc(100% - 16px),690px);bottom:53px}
-.scene-food-viewport{flex:1;min-width:0;overflow:hidden}
-.scene-food-track{display:flex;transition:transform .28s ease}
 .scene-food-grid{flex:0 0 100%;flex-wrap:nowrap;gap:4px}
 .modern .scene-food-grid button:not(.mascot):not(.mini-stats button){flex:0 1 calc((100% - 8px)/3);cursor:grab}
 .modern .scene-food-grid button:active:not(:disabled){cursor:grabbing}
@@ -272,15 +277,14 @@
  border-radius:50%;padding:0;background:#59344bdd;border-color:#bd8dab66;color:white;font-size:26px;line-height:1;
 }
 .scene-food .food-arrow:disabled{opacity:.42}
-.modern .photo-room.feeding .actor-position{bottom:calc(61px + clamp(84px,12vw,112px))}
-.modern .photo-room.feeding .floor-shadow{bottom:calc(63px + clamp(84px,12vw,112px))}
+.modern .photo-room.choosing-play .actor-position{bottom:calc(61px + clamp(84px,12vw,112px))}
+.modern .photo-room.choosing-play .floor-shadow{bottom:calc(63px + clamp(84px,12vw,112px))}
 .food-drag .food-picture{width:48px;height:48px}
 .dish-art-bread{clip-path:polygon(32% 2%,24% 3%,9% 9%,3% 16%,2% 30%,8% 37%,12% 51%,12% 94%,15% 97%,85% 97%,88% 94%,88% 51%,91% 40%,98% 30%,98% 18%,91% 9%,76% 3%,68% 2%)}
 .dish-art-noodles{clip-path:polygon(23% 19%,19% 23%,19% 28%,27% 38%,24% 43%,27% 61%,33% 68%,33% 71%,39% 77%,44% 79%,61% 79%,72% 72%,71% 70%,78% 62%,81% 48%,81% 41%,80% 38%,67% 29%,64% 23%,28% 22%,27% 19%)}
 .dish-art-burger{clip-path:polygon(39% 16%,32% 18%,22% 23%,17% 32%,5% 37%,5% 42%,7% 47%,22% 55%,7% 67%,7% 69%,17% 72%,25% 79%,39% 83%,64% 83%,78% 79%,91% 68%,88% 63%,93% 59%,88% 53%,95% 47%,95% 40%,86% 32%,86% 28%,75% 20%,64% 16%)}
 .dish-art-lunch{clip-path:ellipse(42% 32% at 50% 49%)}
 .dish-art-restaurant{clip-path:polygon(39% 14%,61% 14%,75% 18%,84% 23%,96% 35%,100% 43%,100% 56%,96% 64%,84% 76%,75% 81%,61% 85%,39% 85%,25% 81%,16% 76%,4% 64%,0% 56%,0% 43%,4% 35%,16% 24%,25% 18%)}
-@media(prefers-reduced-motion:reduce){.scene-food-track{transition:none}}
 .dish-art-noodles{transform:scale(1.25)}
 
 .mascot.pet .layered-character{animation:pet-bounce .38s ease-out}
@@ -291,7 +295,7 @@
 @media(prefers-reduced-motion:reduce){.mascot.pet .layered-character{animation:none}}
 
 .bath-scene-backdrop,.bath-scene-art{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.bath-scene-backdrop{background:url('/assets/bath-foam-room.png') center/100% 100%}
+.bath-scene-backdrop{background:url('./assets/bare-bath-foam.webp') center/100% 100%}
 .bath-scene-art{z-index:4}
 .bath-phase-soak .actor-position,.bath-phase-soak .floor-shadow{visibility:hidden}
 .modern .scene-walk :is(.actor-position,.floor-shadow){
@@ -346,10 +350,6 @@
 }
 @keyframes activity-notice-fade{0%,50%{opacity:1}100%{opacity:0}}
 .activity-busy button:disabled{pointer-events:none}
-@keyframes toilet-approach{
- from{transform:translate(-50%,0)}
- to{transform:translate(calc(-50% + var(--x)),var(--y))}
-}
 @keyframes bath-water{to{stroke-dashoffset:-8}}
 @keyframes bath-bubble{from{opacity:0}35%{opacity:1}to{opacity:0;transform:translateY(-13px)}}
 @media(prefers-reduced-motion:reduce){
@@ -357,20 +357,34 @@
  .bath-bubble{animation:none}
 }
 
-.toilet-scene-art{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
-.toilet-phase-use .actor-position,.toilet-phase-use .floor-shadow{visibility:hidden}
-.toilet-phase-approach .actor-position{animation:toilet-approach 1.4s linear both}
-.toilet-phase-open .activity-toilet .arm-right{transform-origin:35px 54px;animation:toilet-lift-arm 1.2s ease-out both}
-.toilet-lid{transform-origin:25px 258px}
-.toilet-lid-opening{animation:toilet-lift-lid 1.15s ease-out both}
+.toilet-scene-art{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
+.modern .photo-room[data-location=bathroom]:is(.toilet-phase-approach,.toilet-phase-open,.toilet-phase-use) :is(.actor-position,.floor-shadow){
+ /* The floor point beside the bowl is at (80, 310) in the 320 × 480 scene. */
+ left:25%;bottom:35.4167%;scale:.55;transition:none
+}
+.modern :is(.toilet-phase-approach,.toilet-phase-open,.toilet-phase-use) .actor-position{
+ translate:-50% 3%;transform:none;transform-origin:50% 97%
+}
+.modern :is(.toilet-phase-approach,.toilet-phase-open,.toilet-phase-use) .floor-shadow{
+ translate:-50% 50%;transform-origin:50% 50%
+}
+.modern .toilet-phase-approach :is(.actor-position,.floor-shadow){
+ animation:toilet-approach var(--toilet-walk-duration) linear var(--toilet-walk-delay) both
+}
+.toilet-phase-approach .pose-walking{transform:scaleX(-1)}
+@keyframes toilet-approach{
+ from{left:50%;bottom:calc(var(--room-floor,49px) + .03 * var(--room-avatar-size,clamp(205px,66vmin,350px)));scale:1}
+}
+.toilet-phase-open .activity-toilet .arm-right{transform-origin:35px 54px;animation:toilet-lift-arm var(--toilet-lift-duration) ease-out var(--toilet-lift-delay) both}
+.toilet-lid{transform-origin:27px 259px}
+.toilet-lid-opening{animation:toilet-lift-lid var(--toilet-lift-duration) ease-out var(--toilet-lift-delay) both}
 .toilet-stream{animation:bath-water .24s linear infinite}
-.toilet-mosaic{animation:toilet-mosaic .32s steps(2) infinite alternate}
-@keyframes toilet-lift-arm{45%,100%{transform:rotate(78deg)}}
-@keyframes toilet-lift-lid{from{transform:scaleY(.18) skewX(-38deg)}to{transform:none}}
-@keyframes toilet-mosaic{to{filter:brightness(1.23)}}
+@keyframes toilet-lift-arm{40%,100%{transform:rotate(94deg)}}
+@keyframes toilet-lift-lid{0%,16%{transform:scaleY(.14) skewX(-36deg)}100%{transform:none}}
 @media(prefers-reduced-motion:reduce){
- .toilet-phase-approach .actor-position,.toilet-phase-open .activity-toilet .arm-right,
- .toilet-lid-opening,.toilet-stream,.toilet-mosaic{animation:none}
+ .modern .toilet-phase-approach :is(.actor-position,.floor-shadow),.toilet-phase-approach .pose-walking :is(.leg,.arm),
+ .toilet-phase-open .activity-toilet .arm-right,
+ .toilet-lid-opening,.toilet-stream{animation:none}
 }
 
 
@@ -499,17 +513,22 @@
  .modern .home-layout .photo-room{
   --room-avatar-size:min(58vw,230px,72cqh);
   --room-floor:44px;
-  --feeding-floor:calc(var(--room-floor) + clamp(80px,22vw,96px));
+  --play-menu-floor:calc(var(--room-floor) + clamp(80px,22vw,96px));
   flex:1 0 0;height:auto;min-height:160px;container-type:size;
  }
+ .stat-deck{top:max(44px,9%);left:8px;gap:clamp(2px,.7cqh,5px);width:clamp(62px,19%,84px)}
+ .stat-card{column-gap:4px}
+ .stat-card .pixel-icon{width:21px;height:21px}
+ .stat-card strong{font-size:12px}
+ .stat-card progress{height:6px}
  .modern .home-layout .photo-room .actor-position{width:var(--room-avatar-size);height:var(--room-avatar-size)}
  .modern .home-layout .photo-room .actor-position:not([class*="activity-"]){bottom:var(--room-floor)}
  .modern .home-layout .photo-room .floor-shadow{bottom:calc(var(--room-floor) + 2px)}
- .modern .home-layout .photo-room.feeding .actor-position{
-  --room-avatar-size:min(58vw,230px,max(48px,calc(100cqh - var(--feeding-floor) - 13px)));
-  bottom:var(--feeding-floor);
+ .modern .home-layout .photo-room.choosing-play .actor-position{
+  --room-avatar-size:min(58vw,230px,max(48px,calc(100cqh - var(--play-menu-floor) - 13px)));
+  bottom:var(--play-menu-floor);
  }
- .modern .home-layout .photo-room.feeding .floor-shadow{bottom:calc(var(--feeding-floor) + 2px)}
+ .modern .home-layout .photo-room.choosing-play .floor-shadow{bottom:calc(var(--play-menu-floor) + 2px)}
  .home-layout .yoga-scene{--yoga-size:var(--room-avatar-size)}
  .home-layout .tutorial-card{padding:5px 8px;font-size:12px;line-height:1.28}
  .home-layout .tutorial-card p{margin-top:3px;font-size:11px}
@@ -522,4 +541,23 @@
  .home-layout .scene-play .food-picture .game-icon{height:32px;width:32px}
  .home-layout .scene-food-grid small{margin-top:2px;padding:2px 0 0}
  .home-layout .scene-play .scene-food-grid small{white-space:normal}
+}
+
+
+.modern .home-layout .scene-feeding{
+ inset:36px 7px 43px auto;width:clamp(61px,19%,116px);margin:0;padding:0;
+ flex-direction:column;justify-content:center;gap:4px;
+}
+.scene-feeding .scene-food-grid{display:grid;flex:0 0 auto;width:100%;gap:4px}
+.modern .scene-feeding .scene-food-grid button:not(.mascot):not(.mini-stats button){
+ width:100%;min-height:44px;padding:2px;background:#1a203ae8;
+ border:1px solid #83689f;border-radius:8px;
+}
+.scene-feeding .scene-food-grid strong{font-size:clamp(11px,3vw,15px)}
+.scene-feeding .scene-food-grid small{font-size:clamp(8px,2.1vw,10px);white-space:normal}
+.food-pages{display:flex;width:100%;justify-content:space-between;gap:2px}
+.modern .scene-feeding .food-arrow:not(.mascot):not(.mini-stats button){width:calc(50% - 1px);min-height:28px;aspect-ratio:auto;font-size:23px}
+@container(max-height:215px){
+ .scene-feeding .food-picture{height:25px}
+ .scene-feeding .scene-food-grid small{display:none}
 }

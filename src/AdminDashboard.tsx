@@ -1,11 +1,13 @@
 import {useCallback,useEffect,useRef,useState,type FormEvent,type ReactNode} from 'react';
-import {adminLabels,type AdminField,type AdminGift,type AdminJournalEntry,type AdminValues,type PlayerDetails,type PlayerSummary} from './adminTypes';
+import {adminLabels,statKeys,type PlayerStat,type AdminField,type AdminGift,type AdminJournalEntry,type AdminValues,type PlayerDetails,type PlayerSummary} from './adminTypes';
 import {rubles} from './economy';
 import {maxGiftWishLength} from './giftWish';
-import {GameIcon} from './GameIcon';
+import {GiftArtwork} from './GiftArtwork';
+import {AdminWorld,type WorldCommand} from './AdminWorld';
+import type {WorldState} from './world';
 import './admin.css';
 
-type Section='players'|'gifts'|'journal';
+type Section='players'|'gifts'|'journal'|'world';
 type Page={page:number;pages:number};
 type PlayersPage=Page&{total:number;active:number;players:PlayerSummary[]};
 type GiftsPage=Page&{total:number;gifts:AdminGift[]};
@@ -13,14 +15,19 @@ type JournalPage=Page&{entries:AdminJournalEntry[]};
 type PlayerCommand={kind:'edit';values:AdminValues}|{kind:'credit';amount:number};
 type GiftCommand={kind:'edit';anonymous?:boolean;wish?:string}|{kind:'move';position:number}|{kind:'remove'|'reset'};
 type Request=<T>(path:string,body?:object,signal?:AbortSignal)=>Promise<T>;
+type BulkCommand={fields:PlayerStat[];delta:number};
+type ChangeAll=(command:BulkCommand)=>Promise<{affected:number;total:number}>;
 type ChangePlayer=(id:string,command:PlayerCommand)=>Promise<PlayerDetails>;
 const fields=Object.keys(adminLabels) as AdminField[];
-const sectionLabels={players:'Игроки',gifts:'Подарки',journal:'Журнал'} as const;
+const sectionLabels={players:'Игроки',gifts:'Подарки',journal:'Журнал',world:'Управление'} as const;
 const date=new Intl.DateTimeFormat('ru-RU',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Moscow'});
 const errors:Record<string,string>={
  expired_session:'Сессия истекла. Открой игру заново через бота.',admin_required:'Доступ к админ-панели закрыт.',
  player_not_found:'Игрок не найден.',gift_not_found:'Подарок уже убран со стенда.',balance_limit:'Сумма превышает допустимый баланс.',
  player_state_changed:'Состояние игрока изменилось. Обнови его карточку.',operation_reused:'Запрос уже обработан с другими данными. Обнови карточку.',
+ invalid_world_command:'Проверь вопрос, разные варианты ответов и время голосования.',
+ poll_already_running:'Сначала дождись окончания текущего голосования.',
+ stat_limit:'Значение слишком велико. Уменьши число пунктов.',
  invalid_admin_command:'Проверь введённые значения.',invalid_gift_command:'Проверь пожелание и номер позиции.',
 };
 
@@ -65,7 +72,41 @@ function Feedback({error,reload,children}:{error:string;reload:()=>void;children
  return error?<div className="admin-feedback" role="alert">{error}<button type="button" onClick={reload}>Повторить</button></div>:children;
 }
 
-function Players({request,changePlayer}:{request:Request;changePlayer:ChangePlayer}){
+function BulkStats({changeAll,reload}:{changeAll:ChangeAll;reload:()=>void}){
+ const [selected,setSelected]=useState<PlayerStat[]>([...statKeys]);
+ const [direction,setDirection]=useState(-1);
+ const [points,setPoints]=useState('10');
+ const [notice,setNotice]=useState('');
+ const mutation=useMutation();
+ function submit(event:FormEvent<HTMLFormElement>){
+  event.preventDefault();setNotice('');
+  void mutation.run(async()=>{
+   const result=await changeAll({fields:statKeys.filter(field=>selected.includes(field)),delta:direction*Number(points)});
+   setNotice(`Изменены характеристики у ${result.affected} из ${result.total} игроков.`);reload();
+  });
+ }
+ return <details className="admin-bulk">
+  <summary>Характеристики всех игроков</summary>
+  <form className="admin-edit" onSubmit={submit}>
+   <fieldset disabled={mutation.busy}><legend>Какие характеристики изменить</legend>
+    {statKeys.map(field=><label key={field} className="admin-checkbox">
+     <input type="checkbox" checked={selected.includes(field)} onChange={e=>setSelected(e.target.checked?[...selected,field]:selected.filter(key=>key!==field))}/>
+     {adminLabels[field]}</label>)}
+   </fieldset>
+   <label>Действие<select value={direction} disabled={mutation.busy} onChange={e=>setDirection(Number(e.target.value))}>
+    <option value={-1}>Снизить</option><option value={1}>Повысить</option>
+   </select></label>
+   <label>На сколько пунктов<input type="number" inputMode="numeric" min={1} max={Number.MAX_SAFE_INTEGER} step={1}
+    required value={points} disabled={mutation.busy} onChange={e=>setPoints(e.target.value)}/></label>
+   <button type="submit" disabled={mutation.busy||!selected.length||Number(points)<=0}>
+    {direction<0?'Снизить':'Повысить'} всем{Number(points)>0&&` на ${points}`}
+   </button>
+   {notice&&<p role="status">{notice}</p>}{mutation.error&&<p role="alert">{mutation.error}</p>}
+  </form>
+ </details>;
+}
+
+function Players({request,changePlayer,changeAll}:{request:Request;changePlayer:ChangePlayer;changeAll:ChangeAll}){
  const [selected,setSelected]=useState<string>();
  const [query,setQuery]=useState('');
  const [search,setSearch]=useState('');
@@ -79,6 +120,7 @@ function Players({request,changePlayer}:{request:Request;changePlayer:ChangePlay
  if(selected)return <PlayerCard request={request} changePlayer={changePlayer} id={selected} goBack={()=>{setSelected(undefined);directory.reload();}}/>;
  const data=directory.data;
  return <section className="admin-section" aria-label="Игроки">
+  <BulkStats changeAll={changeAll} reload={directory.reload}/>
   <form className="admin-search" onSubmit={searchPlayers}>
    <input type="search" aria-label="Ник или Telegram ID" placeholder="Ник или Telegram ID" value={query} onChange={event=>setQuery(event.target.value)} maxLength={80}/>
    <button type="submit">Найти</button>
@@ -137,11 +179,12 @@ function PlayerForm({player,changePlayer,onSave,reload}:{player:PlayerDetails;ch
    <div className="admin-stat-grid">{fields.map(field=>{
     const economy=field==='balance'||field==='xp';
     return <label key={field}>{adminLabels[field]}{field==='balance'?' (₽)':field==='xp'?' (XP)':' (%)'}
-     <input type="number" inputMode="numeric" required min={0} step={1} max={economy?Number.MAX_SAFE_INTEGER:100}
-      disabled={mutation.busy||(!economy&&(!player.introCompleted||(field==='health'&&player.hospitalized)))}
+     <input type="number" inputMode="numeric" required min={0} step={1} max={Number.MAX_SAFE_INTEGER}
+      disabled={mutation.busy||(!economy&&field==='health'&&player.hospitalized)}
       value={draft[field]??Math.floor(player.values[field])} onChange={event=>setDraft({...draft,[field]:event.target.value})}/>
     </label>;
    })}</div>
+   <small>Значение выше 100 повышает личный максимум характеристики.</small>
    <button type="submit" disabled={mutation.busy||!Object.keys(draft).length}>Сохранить параметры</button>
   </form>
   <form className="admin-credit" onSubmit={event=>submit(event,{kind:'credit',amount:Number(amount)})}>
@@ -171,7 +214,7 @@ function Gifts({request}:{request:Request}){
    {catalog.data?<>
     {catalog.data.gifts.length?<ul className="admin-list">{catalog.data.gifts.map(gift=><li key={gift.id}>
      <button type="button" onClick={()=>{setNotice('');setSelected(gift);}}>
-      <span className="admin-gift-label"><GameIcon name={gift.icon}/><span><strong>{gift.name}</strong><small dir="auto">{gift.sender}</small></span></span>
+      <span className="admin-gift-label"><GiftArtwork icon={gift.icon} price={gift.price}/><span><strong>{gift.name}</strong><small dir="auto">{gift.sender}</small></span></span>
       <span>№ {gift.position}<small>★ {gift.price}{gift.manual?' · Вручную':''}</small></span>
      </button>
     </li>)}</ul>:<p className="admin-muted">На стенде пока нет подарков.</p>}
@@ -194,7 +237,7 @@ function GiftForm({gift,total,request,goBack,onSave}:{gift:AdminGift;total:numbe
 
  return <section className="admin-section" aria-label="Редактирование подарка">
   <button className="admin-back" type="button" onClick={goBack} disabled={mutation.busy}>‹ К списку подарков</button>
-  <h3 className="admin-gift-label"><GameIcon name={gift.icon}/>{gift.name} <small>★ {gift.price}</small></h3>
+  <h3 className="admin-gift-label"><GiftArtwork icon={gift.icon} price={gift.price}/>{gift.name} <small>★ {gift.price}</small></h3>
   <p className="admin-muted" dir="auto">{gift.sender} · Позиция {gift.position}</p>
   <form className="admin-edit" onSubmit={event=>{
    event.preventDefault();
@@ -230,13 +273,38 @@ function Journal({request}:{request:Request}){
   <Feedback error={resource.error} reload={resource.reload}>
    {resource.data?<>
     {resource.data.entries.length?<ul className="admin-list admin-journal">{resource.data.entries.map(entry=><li key={`${entry.adminId}:${entry.id}`}>
-     <strong>{entry.kind==='credit'?`Начисление ${rubles(entry.amount??0)}`:'Изменение параметров'} · {entry.name||entry.playerId}</strong>
-     <small>{date.format(entry.at)} МСК · Игрок {entry.playerId} · Админ {entry.adminId}</small>
+     <strong>{entry.kind==='adjust'?`Все игроки · ${entry.delta>0?'+':''}${entry.delta} п. · ${entry.fields.map(field=>adminLabels[field]).join(', ')}`:entry.kind==='credit'?`Начисление ${rubles(entry.amount)}`:'Изменение параметров'}{entry.kind!=='adjust'&&` · ${entry.name||entry.playerId}`}</strong>
+     <small>{date.format(entry.at)} МСК · {entry.kind==='adjust'?`Изменено игроков: ${entry.affected}`:`Игрок ${entry.playerId}`} · Админ {entry.adminId}</small>
      {fields.map(field=>{const value=entry.changes[field];return value&&<span key={field}>{adminLabels[field]} {value.before} → {value.after}</span>;})}
     </li>)}</ul>:<p className="admin-muted">Журнал пока пуст.</p>}
     <Pagination data={resource.data} onPage={setPage}/>
    </>:<p role="status">Загружаем журнал…</p>}
   </Feedback>
+ </section>;
+}
+
+function WorldControls({request}:{request:Request}){
+ const [world,setWorld]=useState<WorldState>();
+ const [error,setError]=useState('');
+ const loading=useRef(false);
+ const mutation=useMutation();
+ const {run}=mutation;
+ const refresh=useCallback(()=>{
+  if(loading.current)return;
+  loading.current=true;
+  void request<WorldState>('/world').then(value=>{setWorld(value);setError('');})
+   .catch((failure:Error)=>setError(failure.message)).finally(()=>{loading.current=false;});
+ },[request]);
+ useEffect(refresh,[refresh]);
+ async function submit(command:WorldCommand){
+  let successful=false;
+  await run(async()=>{setWorld(await request<WorldState>('/world',command));setError('');successful=true;});
+  return successful;
+ }
+ return <section className="admin-section" aria-label="Управление игрой">
+  {error&&<div className="admin-feedback" role="alert">{error}<button type="button" onClick={refresh}>Повторить</button></div>}
+  {mutation.error&&<p role="alert">{mutation.error}</p>}
+  {(world||!error)&&<AdminWorld world={world} busy={mutation.busy} submit={submit} refresh={refresh}/>}
  </section>;
 }
 
@@ -264,14 +332,18 @@ export function AdminDashboard({token}:{token:string}){
   return result as T;
  },[token]);
 
- async function changePlayer(id:string,command:PlayerCommand){
-  const key=JSON.stringify([id,command]);
+ async function mutate<T>(path:string,command:PlayerCommand|BulkCommand){
+  const key=JSON.stringify([path,command]);
   const operationId=operations.current.get(key)??crypto.randomUUID();
   operations.current.set(key,operationId);
-  const {player}=await request<{player:PlayerDetails}>(`/players/${id}`,{...command,operationId});
+  const result=await request<T>(path,{...command,operationId});
   operations.current.delete(key);
-  return player;
+  return result;
  }
+ async function changePlayer(id:string,command:PlayerCommand){
+  return (await mutate<{player:PlayerDetails}>(`/players/${id}`,command)).player;
+ }
+ const changeAll:ChangeAll=command=>mutate('/players/adjust',command);
 
  return <>
   <button type="button" className="dev-tools-toggle" onClick={()=>{setOpen(true);dialog.current?.showModal();}}>Админ-панель</button>
@@ -282,7 +354,7 @@ export function AdminDashboard({token}:{token:string}){
     <nav aria-label="Разделы админ-панели">{(Object.keys(sectionLabels) as Section[]).map(tab=><button type="button" key={tab}
      aria-pressed={section===tab} onClick={()=>setSection(tab)}>{sectionLabels[tab]}</button>)}</nav>
    </div>
-   {open&&(section==='players'?<Players request={request} changePlayer={changePlayer}/>:section==='gifts'?<Gifts request={request}/>:<Journal request={request}/>)}
+   {open&&(section==='players'?<Players request={request} changePlayer={changePlayer} changeAll={changeAll}/>:section==='gifts'?<Gifts request={request}/>:section==='journal'?<Journal request={request}/>:<WorldControls request={request}/>)}
   </dialog>
  </>;
 }

@@ -1,19 +1,22 @@
-import {useEffect,useRef,useState,type ReactNode,type PointerEvent} from 'react';
+import {useEffect,useRef,useState,type ReactNode,type PointerEvent,type CSSProperties} from 'react';
 import type {Hit} from './body';
 import {reactions} from './body';
 import {PixelAvatar,type AvatarLayer} from './PixelAvatar';
-import {getSoundContext,isSoundMuted,playRangeSound,prepareRangeShot,playRangeShot} from './sound';
+import {getSoundContext,isSoundMuted,prepareRangeShot,playRangeShot} from './sound';
 import {useRangeMotion} from './useRangeMotion';
-import type {Collision} from './rangePhysics';
-import {rangeParts as rangePartsList,RANGE_BALANCE,freshRange,regrowPart,hitRange,rangePart} from './rangeDamage';
-import {resolveContacts} from './rangeContacts';
+import {limit} from './rangePhysics';
+import {anchorRangeMark,RANGE_BALANCE,freshRange,regrowPart,hitRange,rangePart,type RangePart,type Source} from './rangeDamage';
+import {floorFraction,floorReserve,resolveContacts,wallInset,type BodyBox,type Contact} from './rangeContacts';
 import {useRangePieces} from './useRangePieces';
+import {useRangeTraps} from './useRangeTraps';
+import {playBatImpact,playImpactRecording,playSawCloth,playTrapRecording,preloadTrapRecordings} from './rangeTrapSound';
+import {makeRangeBurst,RangeBursts,RangeTrapActors,RangeTrapPanel,type RangeBurstEffect} from './RangeTrapEffects';
 import type {Outfit} from './wardrobe';
 import type {HairWetness} from './hair';
 import './range.css';
 
 type Weapon='pistol'|'bat'|'hand';
-type DamageType='hole'|'bruise'|'tear';
+type DamageType='hole'|'bruise'|'tear'|'scratch';
 type Damage={
  id:number;
  type:DamageType;
@@ -24,13 +27,33 @@ type Damage={
  x:number;
  y:number;
  strength?:number;
- bend?:number;
+ trap?:boolean;
 };
 type Target=Pick<Damage,'bodyPart'|'layer'|'x'|'y'>&{clientX?:number;clientY?:number;aimX?:number;aimY?:number};
 
 const weapons=[{id:'pistol',name:'Пистолет',action:'Выстрелить'},{id:'bat',name:'Бита',action:'Ударить битой'},{id:'hand',name:'Рука',action:'Подбросить'}] as const;
+const timedTrapRecordings={saw:'saw-motor',fan:'fan',weight:'weight-fall'} as const;
+type TimedTrap=keyof typeof timedTrapRecordings;
+const timedTraps=Object.keys(timedTrapRecordings) as TimedTrap[];
+type AvatarBox=[x:number,y:number,width:number,height:number];
+const jointBounds:Record<AvatarLayer,AvatarBox>={
+ head:[21,-3,58,58],torso:[32,46,36,29],
+ 'right-arm':[29,50,9,21],'left-arm':[62,50,9,21],
+ 'right-forearm':[27,70,10,12],'left-forearm':[63,70,10,12],
+ 'right-leg':[35,70,14,16],'left-leg':[51,70,14,16],
+ 'right-shin':[27,83,22,18],'left-shin':[51,83,22,18],
+};
+const collisionLayers=Object.keys(jointBounds) as AvatarLayer[];
+const arenaStyle={
+ '--range-wall-inset':`${wallInset*100}%`,
+ '--range-floor-inset':`max(${(1-floorFraction)*100}%,${floorReserve}px)`,
+} as CSSProperties;
+const fragmentBounds:Partial<Record<RangePart,AvatarBox>>={
+ 'right-arm':[27,50,11,32],'left-arm':[62,50,11,32],
+ 'right-leg':[27,70,22,32],'left-leg':[51,70,22,32],
+};
 
-function hitName(part:import('./rangeDamage').RangePart):Hit{return part==='torso'?'belly':part.endsWith('leg')?'legs':part as Hit;}
+function hitName(part:RangePart):Hit{return part==='torso'?'belly':part.endsWith('leg')?'legs':part as Hit;}
 
 function WeaponArt({weapon,firing=false}:{weapon:Weapon;firing?:boolean}){
  return <svg viewBox="0 0 96 74" aria-hidden="true" shapeRendering="crispEdges">
@@ -51,15 +74,20 @@ function WeaponArt({weapon,firing=false}:{weapon:Weapon;firing?:boolean}){
 
 function DamageMark({damage}:{damage:Damage}){
  const {x,y, type,id}=damage;
- return <g transform={`translate(${x} ${y}) scale(${damage.strength??1})`} data-damage-id={id} data-damage-type={type} strokeWidth=".7">
+ return <g transform={`translate(${x} ${y}) scale(${damage.strength??1})`} data-damage-id={id} data-damage-type={type} data-trap-damage={damage.trap||undefined} pointerEvents="none" strokeWidth=".7">
   {type==='hole'?<>
    <path d="m-4-2 2-.4-.3-2 2.2 1.2 2-1.2.2 2 2.1.7-1.1 1.7 1 2.1-2 .25-.5 1.5-1.8-1.1-2.2.75.3-2-2-1Z" fill="#222037" stroke="#f0bd92"/>
    <path d="m-1.5-1 2.3-.6 1.3 1.2-1 2-2-.3Z" fill="#151221" stroke="none"/>
-  </>:type==='tear'?
-   <path d="m-5-2 3 .2 1-2 1.1 2.2 3.9-.6-2.5 2 2.9 1.3-4-.1-.9 2.1-1.6-1.4-2.5.8 1.2-2.1Z" fill="#23203a" stroke="#b79cbc"/>
+  </>:type==='tear'?<>
+   <path d="m-5-2 3 .2 1-2 1.1 2.2 3.9-.6-2.5 2 2.9 1.3-4-.1-.9 2.1-1.6-1.4-2.5.8 1.2-2.1Z" fill={damage.trap?'#6a1939':'#23203a'} stroke={damage.trap?'#f1aac0':'#b79cbc'}/>
+   {damage.trap&&<path d="M-5-4-1-2m4 0 2-1M-4 3l2-1m4 2 2-2M-2 0l4-1" stroke="#ff526e" fill="none"/>}
+  </>:type==='scratch'?<>
+   <path d="M-5 1-2-2-1-4M-2 3 1 0 3-3M1 4l4-4" stroke="#841638" strokeWidth="1.45" fill="none"/>
+   <path d="M-4 1-2-1M-1 3 1 1m1 3 2-2" stroke="#ff3d61" fill="none"/>
+  </>
   :<>
-   <path d="M-4-1h1v-2h5v1h2v4H2v1h-5V2h-1Z" fill="#8053a1" fillOpacity=".85" stroke="#50365f"/>
-   <path d="M-2-1h3v1h-3Z" fill="#bd83c4" stroke="none"/>
+   <path d="M-4-1h1v-2h5v1h2v4H2v1h-5V2h-1Z" fill={damage.trap?'#ab4767':'#8053a1'} fillOpacity=".85" stroke="#50365f"/>
+   <path d="M-2-1h3v1h-3Z" fill={damage.trap?'#fc8c9c':'#bd83c4'} stroke="none"/>
   </>}
  </g>;
 }
@@ -86,62 +114,104 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
  const [emotion,setEmotion]=useState('scared');
  const emotionAt=useRef(-Infinity);
  const [damages,setDamages]=useState<Damage[]>([]);
- const [swing,setSwing]=useState<{id:number;weapon:Weapon;target:Target}|null>(null);
+ const [swing,setSwing]=useState<{id:number;target:Target}|null>(null);
  const actor=useRef<HTMLDivElement>(null);
  const stage=useRef<HTMLDivElement>(null);
  const impactAt=useRef(0);
- function measure(part:import('./rangeDamage').RangePart){
-  const group=actor.current?.querySelector<SVGGElement>(`[data-avatar-layer="${part}"]`),m=group?.getScreenCTM();
-  if(!m)return;
-  const b={head:[21,-3,58,58],torso:[32,46,36,29],'right-arm':[27,50,11,32],'left-arm':[62,50,11,32],'right-leg':[27,70,22,32],'left-leg':[51,70,22,32]}[part];
-  const pts=[[b[0],b[1]],[b[0]+b[2],b[1]],[b[0],b[1]+b[3]],[b[0]+b[2],b[1]+b[3]]].map(p=>new DOMPoint(...p).matrixTransform(m));
-  const left=Math.min(...pts.map(p=>p.x)),top=Math.min(...pts.map(p=>p.y));
-  return {left,top,width:Math.max(...pts.map(p=>p.x))-left,height:Math.max(...pts.map(p=>p.y))-top,viewBox:b.join(' ')};
+ const surfaceTouchAt=useRef(-Infinity);
+ const [surfaceTouch,setSurfaceTouch]=useState<(Pick<Contact,'side'|'x'|'y'>&{id:number})|null>(null);
+ const [bursts,setBursts]=useState<RangeBurstEffect[]>([]);
+ const cameraShake=useRef<Animation|null>(null);
+ const surfaces=useRef<Partial<Record<AvatarLayer,SVGGElement>>>({});
+ function surface(layer:AvatarLayer){
+  const cached=surfaces.current[layer];
+  if(cached?.isConnected)return cached;
+  const node=actor.current?.querySelector<SVGGElement>(`[data-avatar-layer="${layer}"]`);
+  if(node)surfaces.current[layer]=node;
+  return node;
  }
- const physics=useRangeMotion(stage,actor,collision=>{
+ function measure(layer:AvatarLayer,fragment=false){
+  const m=surface(layer)?.getScreenCTM();
+  if(!m)return;
+  const bounds=(fragment?fragmentBounds[rangePart(layer)]:undefined)??jointBounds[layer];
+  const [x,y,w,h]=bounds;
+  // Transform the local rectangle without measuring hidden frames of the head atlas.
+  return {left:m.a*x+m.c*y+m.e+Math.min(0,m.a*w)+Math.min(0,m.c*h),
+   top:m.b*x+m.d*y+m.f+Math.min(0,m.b*w)+Math.min(0,m.d*h),
+   width:Math.abs(m.a*w)+Math.abs(m.c*h),height:Math.abs(m.b*w)+Math.abs(m.d*h),
+   viewBox:fragment?bounds.join(' '):''};
+ }
+ const traps=useRangeTraps(stage,bodyBoxes,(kind,hit,part,repeat)=>{
+  const target=collisionTarget(hit.layer??hit.part,limit(hit.x,part.x,part.x+part.w),limit(hit.y,part.y,part.y+part.h));
+  if(!target||!register(target,kind))return;
+  burst(kind,hit.x,hit.y);
+  if(kind!=='weight')impactSound(kind==='spikes'?(repeat?'spikes-repeat':'spikes-first'):kind);
+ },()=>{
+  stopTrapSound('weight');
+  impactSound('weight-impact');
+ });
+ const physics=useRangeMotion(stage,actor,(collision,trapDriven)=>{
+  if(collision.boundary&&collision.side!=='ceiling'&&physics.motion==='held'&&performance.now()-surfaceTouchAt.current>=145){
+   surfaceTouchAt.current=performance.now();
+   const id=++sequence.current;
+   setSurfaceTouch({id,side:collision.side,x:collision.x,y:collision.y});
+   after(()=>setSurfaceTouch(current=>current?.id===id?null:current),240);
+  }
   if(collision.speed<RANGE_BALANCE.collisionMinSpeed||performance.now()-impactAt.current<RANGE_BALANCE.collisionDelay)return;
   impactAt.current=performance.now();
-  const body=actor.current;
-  const arena=stage.current;
-  const group=body?.querySelector<SVGGElement>(`[data-avatar-layer="${collision.part}"]`);
-  if(!group)return;
-  const matrix=group.getScreenCTM();
-  if(!matrix||!arena)return;
-  const room=arena.getBoundingClientRect();
-  const point=new DOMPoint(collision.x+room.left+arena.clientLeft,collision.y+room.top+arena.clientTop).matrixTransform(matrix.inverse());
-  register({x:point.x,y:point.y,layer:collision.part,bodyPart:hitName(collision.part)},'collision');
+  const target=collisionTarget(collision.layer??collision.part,collision.x,collision.y);
+  const heavy=trapDriven&&collision.speed>=515;
+  if(target&&register(target,'collision',undefined,heavy)){
+   impactSound('collision');
+   if(heavy)burst('collision',collision.x,collision.y);
+  }
  },(dx,dy,vx,vy)=>{
   const arena=stage.current;
+  return arena?resolveContacts(bodyBoxes(),dx,dy,vx,vy,arena.clientWidth,arena.clientHeight):{dx:0,dy:0,contacts:[]};
+ },traps.update);
+
+ function bodyBoxes():BodyBox[]{
+  const arena=stage.current;
   const body=actor.current;
-  if(!arena||!body)return {dx:0,dy:0,contacts:[]};
+  if(!arena||!body)return [];
   const room=arena.getBoundingClientRect();
   const left=room.left+arena.clientLeft,top=room.top+arena.clientTop;
   const stroke=body.clientWidth*.014;
-  const boxes=rangePartsList.flatMap(part=>{
+  return collisionLayers.flatMap(layer=>{
+   const part=rangePart(layer);
    if(ledger.current.detached.has(part))return [];
-   const group=body.querySelector<SVGGElement>(`[data-avatar-layer="${part}"]`);
-   // The head group contains the full atlas. Measure one visible sprite frame.
-   const bounds=part==='head'?measure(part):group?.getBoundingClientRect();
+   const bounds=measure(layer);
    return bounds&&bounds.width&&bounds.height?[{
     x:bounds.left-left-stroke,y:bounds.top-top-stroke,
-    w:bounds.width+stroke*2,h:bounds.height+stroke*2,part,
+    w:bounds.width+stroke*2,h:bounds.height+stroke*2,part,layer,
    }]:[];
   });
-  return resolveContacts(boxes,dx,dy,vx,vy,arena.clientWidth,arena.clientHeight);
- });
+ }
+ function collisionTarget(layer:AvatarLayer,x:number,y:number):Target|undefined{
+  const arena=stage.current,body=actor.current;
+  const matrix=surface(layer)?.getScreenCTM();
+  if(!arena||!body||!matrix)return;
+  const room=arena.getBoundingClientRect(),box=body.getBoundingClientRect();
+  const clientX=x+room.left+arena.clientLeft,clientY=y+room.top+arena.clientTop;
+  const point=new DOMPoint(clientX,clientY).matrixTransform(matrix.inverse());
+  if(!Number.isFinite(point.x)||!Number.isFinite(point.y))return;
+  return {x:point.x,y:point.y,layer,bodyPart:hitName(rangePart(layer)),aimX:(clientX-box.left)/box.width*100,aimY:(clientY-box.top)/box.height*104};
+ }
 
  const [reaction,setReaction]=useState<{id:number;part:Hit;target:Target}|null>(null);
  const sequence=useRef(0);
  const timers=useRef(new Set<number>());
  const reactionTimer=useRef<number>(undefined);
  const output=useRef<GainNode>(null);
+ const trapSounds=useRef<Partial<Record<TimedTrap,()=>void>>>({});
  const weapon=weapons[selected];
 
  useEffect(()=>{
   const pending=timers.current;
+  preloadTrapRecordings();
   const removeExpired=()=>{
    setDamages(current=>current.filter(damage=>damage.expiresAt>performance.now()));
-
+   if(document.hidden)timedTraps.forEach(stopTrapSound);
   };
   document.addEventListener('visibilitychange',removeExpired);
   return ()=>{
@@ -149,9 +219,15 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
    pending.clear();
 
    document.removeEventListener('visibilitychange',removeExpired);
+   cameraShake.current?.cancel();
+   timedTraps.forEach(stopTrapSound);
    output.current?.disconnect();
+   output.current=null;
   };
  },[]);
+ useEffect(()=>{
+  for(const kind of timedTraps)if(!traps.active.has(kind))stopTrapSound(kind);
+ },[traps.active]);
 
  function after(callback:()=>void,delay:number){
   const timer=window.setTimeout(()=>{timers.current.delete(timer);callback();},delay);
@@ -159,40 +235,78 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   return timer;
  }
 
- function register(target:Target,source:import('./rangeDamage').Source,id=`hit-${++sequence.current}`){
-  if(collapsing.current)return;
+ function rangeAudio(){
+  const audio=getSoundContext();
+  if(!audio)return;
+  if(!output.current){output.current=audio.createGain();output.current.connect(audio.destination);}
+  return {audio,output:output.current};
+ }
+ function stopTrapSound(kind:TimedTrap){
+  trapSounds.current[kind]?.();
+  delete trapSounds.current[kind];
+ }
+ function impactSound(kind:'collision'|'weight-impact'|'saw'|'spikes-first'|'spikes-repeat'){
+  const sound=rangeAudio();
+  if(!sound)return;
+  if(kind==='saw')playSawCloth(sound.audio,sound.output);
+  else if(kind==='collision')playImpactRecording(sound.audio,sound.output);
+  else playTrapRecording(sound.audio,sound.output,kind);
+ }
+ function burst(kind:RangeBurstEffect['kind'],x:number,y:number){
+  const id=++sequence.current;
+  const next=makeRangeBurst(id,kind,x,y);
+  setBursts(current=>[...current.slice(-5),next]);
+  after(()=>setBursts(current=>current.filter(effect=>effect.id!==id)),770);
+  if(!stage.current?.animate||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const amount=kind==='weight'?5:kind==='saw'?3:2;
+  cameraShake.current?.cancel();
+  cameraShake.current=stage.current.animate([
+   {translate:'0 0'},{translate:`-${amount}px ${amount}px`},{translate:`${amount}px -${amount}px`},
+   {translate:`-${amount/2}px ${amount/2}px`},{translate:'0 0'},
+  ],{duration:kind==='weight'?300:210,easing:'ease-out'});
+ }
+ function register(target:Target,source:Source,id=`hit-${++sequence.current}`,heavyCollision=false){
+  if(collapsing.current)return false;
   const part=rangePart(target.layer),previous=ledger.current;
   const next=hitRange(previous,part,source,id);
-  if(next===previous)return;
+  if(next===previous)return false;
   const room=stage.current!.getBoundingClientRect();
   const fresh=[...next.detached].filter(p=>!previous.detached.has(p));
   const pieces=fresh.map(p=>{
-   const group=actor.current!.querySelector<SVGGElement>(`[data-avatar-layer="${p}"]`)!;
-   const b=measure(p)!;
+   const b=measure(p,true)!;
    return {id:++sequence.current,part:p,x:b.left-room.left,y:b.top-room.top,w:b.width,h:b.height,vx:(target.x<50?-1:1)*160,vy:-140,angle:0,spin:target.x<50?-90:90,viewBox:b.viewBox};
   });
   fragments.add(pieces,room.width,room.height);
   if(fresh.includes('torso')){
    collapsing.current=true;
-   after(()=>restore(true),source==='pistol'?RANGE_BALANCE.pistolCollapseDelay:0);
+   after(restore,source==='pistol'?RANGE_BALANCE.pistolCollapseDelay:0);
   }
   ledger.current=next;setHealth(next);
-  addDamage(target,source==='pistol'?'hole':source==='bat'&&part==='torso'?'tear':'bruise');
-  if(source==='collision'){const audio=getSoundContext();if(audio){if(!output.current){output.current=audio.createGain();output.current.connect(audio.destination);}playRangeSound(audio,output.current,'bat');}}
+  const blade=source==='spikes'||source==='saw';
+  const enhanced=blade||source==='weight'||heavyCollision;
+  const exposed=part==='head'||(part.endsWith('-arm')&&target.y>62);
+  const type=source==='pistol'?'hole':blade?(exposed?'scratch':'tear'):source==='bat'&&part==='torso'?'tear':'bruise';
+  addDamage(target,type,enhanced?1.32:1,enhanced);
+  if(source==='weight'){
+   addDamage({x:50,y:59,layer:'torso',bodyPart:'belly'},'tear',1.25,true,false);
+  }
   if(performance.now()-emotionAt.current>=RANGE_BALANCE.emotionDelay){
    emotionAt.current=performance.now();setEmotion(['scared','pain','angry'][Math.floor(Math.random()*3)]);
   }
+  return true;
  }
- function restore(drop=false){
+ function restore(){
   timers.current.forEach(t=>window.clearTimeout(t));timers.current.clear();
-  collapsing.current=false;replacementQueued.current=false;setFading(false);setGrowing([]);setSpawning(drop);
-  ledger.current=freshRange();setHealth(ledger.current);setDamages([]);setSwing(null);setReaction(null);
+  collapsing.current=false;replacementQueued.current=false;setFading(false);setGrowing([]);setSpawning(true);
+  ledger.current=freshRange();setHealth(ledger.current);setDamages([]);setSwing(null);setReaction(null);setBursts([]);setSurfaceTouch(null);
+  cameraShake.current?.cancel();
   fragments.reset();physics.reset();setEmotion('scared');emotionAt.current=-Infinity;impactAt.current=0;
-  if(drop)after(()=>setSpawning(false),550);
+  after(()=>setSpawning(false),550);
  }
- function addDamage(target:Target,type:DamageType,strength=1,bend?:number){
+ function addDamage(target:Target,type:DamageType,strength=1,trap=false,react=true){
   const id=++sequence.current,createdAt=performance.now();
-  const damage:Damage={...target,id,type,strength,bend,createdAt,expiresAt:createdAt+RANGE_BALANCE.markLifetime};
+  const anchor=anchorRangeMark(target.layer,target.x,target.y,strength);
+  const damage:Damage={...target,...anchor,id,type,trap,createdAt,expiresAt:createdAt+RANGE_BALANCE.markLifetime};
   setDamages(current=>[...current,damage]);
   function expire(){
    const remaining=damage.expiresAt-performance.now();
@@ -200,6 +314,7 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
    setDamages(current=>current.filter(mark=>mark.id!==id));
   }
   after(expire,RANGE_BALANCE.markLifetime);
+  if(!react)return;
   setReaction({id,part:target.bodyPart,target});
   if(reactionTimer.current!==undefined){window.clearTimeout(reactionTimer.current);timers.current.delete(reactionTimer.current);}
   reactionTimer.current=after(()=>{reactionTimer.current=undefined;setReaction(null);},360);
@@ -207,16 +322,16 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
  function attack(target:Target){
   if(weapon.id==='hand')return;
   const id=++sequence.current,kind=weapon.id;
-  const audio=getSoundContext();
-  if(audio&&!output.current){output.current=audio.createGain();output.current.connect(audio.destination);}
+  const sound=rangeAudio();
   if(kind==='pistol')prepareRangeShot();
-  setSwing({id,weapon:kind,target});
-  after(()=>setSwing(current=>current?.id===id?null:current),440);
+  setSwing({id,target});
+  after(()=>setSwing(current=>current?.id===id?null:current),kind==='bat'?360:260);
   after(()=>{
    const hit=target.clientX===undefined?target:at(target.clientX,target.clientY!);
-   if(hit){register(hit,kind,`weapon-${id}`);physics.kick(hit.x<50?-1:1);}
-   if(audio&&output.current&&!isSoundMuted()){
-    if(kind==='pistol')playRangeShot(output.current);else playRangeSound(audio,output.current,kind);
+   if(hit){register(hit,kind,`weapon-${id}`);physics.kick(hit.layer,hit.x<50?-1:1,kind==='bat'?50:26);}
+   if(sound&&!isSoundMuted()){
+    if(kind==='pistol')playRangeShot(sound.output);
+    else if(hit)playBatImpact(sound.audio,sound.output);
    }
   },kind==='bat'?145:90);
  }
@@ -224,7 +339,7 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
  function changeWeapon(direction:number){
   setSelected(index=>(index+direction+weapons.length)%weapons.length);
   setSwing(null);
-  physics.reset();
+  physics.onWeaponChange(traps.active.size>0);
  }
 
  function at(clientX:number,clientY:number){
@@ -236,54 +351,59 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   if(ledger.current.detached.has(rangePart(layer)))return;
   const matrix=group.getScreenCTM();if(!matrix)return;
   const point=new DOMPoint(clientX,clientY).matrixTransform(matrix.inverse());
+  if(!Number.isFinite(point.x)||!Number.isFinite(point.y))return;
   const box=actor.current.getBoundingClientRect();
   return {x:point.x,y:point.y,layer,bodyPart:hitName(rangePart(layer)),clientX,clientY,aimX:(clientX-box.left)/box.width*100,aimY:(clientY-box.top)/box.height*104};
  }
  function aim(event:PointerEvent<HTMLDivElement>){
   if(event.button!==0)return;
   const target=at(event.clientX,event.clientY);if(!target)return;
-  if(weapon.id==='hand'){physics.grab(event);getSoundContext();}else attack(target);
+  if(weapon.id==='hand'){physics.grab(event,target.layer,target.x,target.y);getSoundContext();}else attack(target);
  }
  const decals:Partial<Record<AvatarLayer,ReactNode[]>>={};
  for(const damage of damages)(decals[damage.layer]??=[]).push(<DamageMark key={damage.id} damage={damage}/>);
- const joints={...physics.joints};
- for(const damage of damages){
-  if(!damage.bend)continue;
-  const side=damage.layer.startsWith('right')?'right':'left';
-  if(damage.bodyPart==='head')joints.head=(physics.joints.head??0)+damage.bend;
-  else if(damage.bodyPart.endsWith('-arm')){
-   joints[`${side}-arm`]=(physics.joints[`${side}-arm`]??0)+(side==='right'?-20:20);
-   joints[`${side}-forearm`]=(physics.joints[`${side}-forearm`]??0)+(side==='right'?-damage.bend:damage.bend);
-  }else if(damage.bodyPart==='legs')joints[damage.layer]=(physics.joints[damage.layer]??0)+20;
- }
- const weaponAnimating=swing?.weapon===weapon.id;
- const target:Pick<Target,'x'|'y'|'aimX'|'aimY'>=weaponAnimating?swing.target:{x:50,y:60};
+ const holding=weapon.id==='hand'&&physics.motion==='held';
+ const weaponPosition=holding?{left:'var(--range-grip-x, 50%)',top:'var(--range-grip-y, 58%)'}:swing&&{
+  left:`${swing.target.aimX??swing.target.x}%`,top:`${(swing.target.aimY??swing.target.y)/104*100}%`,
+ };
  return <section className="range-screen" aria-label="Полигон">
-  <div className="range-heading"><h1>Полигон</h1><button onClick={()=>restore()}>Восстановить</button></div>
-  <div ref={stage} className="range-stage">
+  <div ref={stage} className="range-stage" style={arenaStyle}>
    <RangeBackdrop/>
+   <div className="range-boundaries" aria-hidden="true"/>
+   {surfaceTouch&&<div key={surfaceTouch.id} className="range-contact" data-side={surfaceTouch.side} aria-hidden="true"
+    style={{'--contact-x':`${surfaceTouch.x}px`,'--contact-y':`${surfaceTouch.y}px`} as CSSProperties}/>}
+   <RangeTrapPanel active={traps.active} activate={kind=>{
+    if(!traps.start(kind))return;
+    const sound=rangeAudio();
+    if(sound&&kind!=='spikes'){
+     stopTrapSound(kind);
+     trapSounds.current[kind]=playTrapRecording(sound.audio,sound.output,timedTrapRecordings[kind]);
+    }
+    physics.startLoop();
+   }}/>
    {reaction&&<span className="range-reaction" key={`label-${reaction.id}`}>{reactions[reaction.part].text}</span>}
    <div ref={actor} className={`range-actor range-motion-${physics.motion}`} onPointerDown={aim} onPointerMove={physics.dragMove} onPointerUp={event=>physics.release(event)} onPointerCancel={event=>physics.release(event,true)} onLostPointerCapture={event=>physics.release(event,true)}>
-    <div className={`range-avatar-rig ${spawning?'range-spawn':''} ${growing.map(p=>'range-grow-'+p).join(' ')} ${Array.from(health.detached).map(p=>'range-cut-'+p).join(' ' )}`} style={{transform:`rotate(${physics.tilt}deg) scale(${physics.squeezeAxis==='horizontal'?1+physics.squash:1-physics.squash*.45},${physics.squeezeAxis==='vertical'?1+physics.squash:1-physics.squash*.45})`}}>
-     <PixelAvatar rangeFaces outfit={outfit} wetness={wetness} pose="range" state={emotion} hit={reaction?.part} decals={decals} joints={joints}/>
+    <div className={`range-avatar-rig ${spawning?'range-spawn':''} ${growing.map(p=>'range-grow-'+p).join(' ')} ${Array.from(health.detached).map(p=>'range-cut-'+p).join(' ' )}`} style={{transform:`rotate(${physics.tilt}deg) scale(${physics.squeezeAxis==='horizontal'?1+physics.squash:1-physics.squash*.65},${physics.squeezeAxis==='vertical'?1+physics.squash:1-physics.squash*.65})`}}>
+     <PixelAvatar rangeFaces outfit={outfit} wetness={wetness} pose="range" state={emotion} hit={reaction?.part} decals={decals} joints={physics.joints}/>
     </div>
-    <div className="range-floating-weapon" data-weapon={weapon.id} style={{left:`${target.aimX??target.x}%`,top:`${(target.aimY??target.y)/104*100}%`}} aria-hidden="true">
-     <span key={weaponAnimating?swing.id:weapon.id} className={weaponAnimating?`range-weapon-art range-attack-${weapon.id}`:'range-weapon-art'}>
-      <WeaponArt weapon={weapon.id} firing={weaponAnimating&&weapon.id==='pistol'}/>
+    {weaponPosition&&<div key={swing?.id??'hand'} className="range-floating-weapon" data-weapon={weapon.id} style={weaponPosition} aria-hidden="true">
+     <span className={holding?'range-weapon-art':`range-weapon-art range-attack-${weapon.id}`}>
+      <WeaponArt weapon={weapon.id} firing={weapon.id==='pistol'}/>
      </span>
-    </div>
+    </div>}
     {reaction&&<span key={`impact-${reaction.id}`} className="range-impact" style={{left:`${reaction.target.aimX??reaction.target.x}%`,top:`${(reaction.target.aimY??reaction.target.y)/104*100}%`}}>✦</span>}
    </div>
+   <RangeTrapActors active={traps.active} nodes={traps.nodes}/>
    {fragments.shown.map(piece=><div key={piece.id} className={"range-piece"+(fading?" range-old-fade":"")} data-part={piece.part} onPointerDown={e=>{e.stopPropagation();fragments.nudge(piece.id);}} style={{left:piece.x,top:piece.y,width:piece.w,height:piece.h,transform:`rotate(${piece.angle}deg)`}}>
     <PixelAvatar rangeFaces outfit={outfit} wetness={wetness} pose="range" state={piece.part==='head'?'detached':emotion} viewBox={piece.viewBox} joints={{}}/>
    </div>)}
+   <RangeBursts bursts={bursts}/>
+   <div className="range-selector" role="group" aria-label="Выбор оружия">
+    <button type="button" aria-label="Предыдущее оружие" onClick={()=>changeWeapon(-1)}>‹</button>
+    <button className="range-keyboard-attack" type="button" disabled={weapon.id==='hand'} onClick={()=>attack({x:50,y:60,layer:'torso',bodyPart:'belly'})} aria-label={`${weapon.action} в центр туловища`}>{weapon.name}</button>
+    <button type="button" aria-label="Следующее оружие" onClick={()=>changeWeapon(1)}>›</button>
+   </div>
   </div>
-  <div className="range-selector" role="group" aria-label="Выбор оружия">
-   <button type="button" aria-label="Предыдущее оружие" onClick={()=>changeWeapon(-1)}>‹</button>
-   <button className="range-keyboard-attack" type="button" disabled={weapon.id==='hand'} onClick={()=>attack({x:50,y:60,layer:'torso',bodyPart:'belly'})} aria-label={`${weapon.action} в центр туловища`}>{weapon.name}</button>
-   <button type="button" aria-label="Следующее оружие" onClick={()=>changeWeapon(1)}>›</button>
-  </div>
-  <p className="range-hint">{weapon.id==='hand'?'Потяни персонажа и отпусти. Быстрый бросок — сильнее удар':'Нажми на персонажа, чтобы выбрать точку удара'}</p>
  </section>;
 }
 

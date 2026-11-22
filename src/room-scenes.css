@@ -1,6 +1,28 @@
 .modern .photo-room[data-location=hall] .location-photo{
- background:#302349 url('/assets/locations/yoga-hall.png') center / 100% 100% no-repeat
+ background:#302349 url('./assets/bare-hall.webp') center / 100% 100% no-repeat
 }
+.modern .photo-room[data-location=bathroom] .location-photo{
+ background:#302349 url('./assets/bare-bathroom.webp') center / 100% 100% no-repeat
+}
+.modern .photo-room[data-location=hallway] .location-photo{
+ background:#302349 url('./assets/bare-hallway.webp') center / 100% 100% no-repeat
+}
+.apartment-decor{
+ position:absolute;z-index:2;translate:-50% -100%;pointer-events:none;
+ filter:var(--scene-filter)
+}
+.modern button.apartment-decor.arranging:not(.mascot):not(.mini-stats button){
+ z-index:9;pointer-events:auto;touch-action:none;cursor:grab;
+ background:none;border:0;border-radius:6px;box-shadow:none;padding:0;
+ outline:1px dashed #ffe0a6;transform:none
+}
+.modern button.apartment-decor.arranging:active:not(.mascot):not(.mini-stats button){cursor:grabbing}
+.photo-room[data-lighting=night] .apartment-decor[data-decor=hallLamp]::before{
+ content:'';position:absolute;inset:17% -135% -25%;pointer-events:none;
+ background:radial-gradient(ellipse at 50% 40%,#ffc56c70,transparent 65%)
+}
+.apartment-decor[data-decor=hallCurtains]{height:32%}
+.apartment-decor[data-decor=hallCurtains] .furniture-art{height:100%}
 .modern .photo-room .locations{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:350px){
  .modern .photo-room .locations button:not(.mascot):not(.mini-stats button){gap:2px;font-size:10px}
@@ -124,7 +146,7 @@
  filter:drop-shadow(2px 4px 3px #160f2b7a)
 }
 .room-lamp-off{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;opacity:var(--sun-visible);transition:opacity .8s}
-.photo-room:is([data-location=room],[data-location=hall]) .location-photo::after{
+.photo-room[data-location=room] .location-photo::after{
  content:'';position:absolute;inset:0;background:inherit;pointer-events:none;
  -webkit-mask-image:radial-gradient(ellipse 22% 28% at var(--painted-lamp-x) var(--painted-lamp-y),#000 var(--lamp-mask-core),transparent 100%);
  mask-image:radial-gradient(ellipse 22% 28% at var(--painted-lamp-x) var(--painted-lamp-y),#000 var(--lamp-mask-core),transparent 100%);
@@ -134,7 +156,9 @@
  --painted-lamp-x:87%;--painted-lamp-y:41%;--lamp-mask-core:40%;
  --lamp-off-filter:brightness(.5) saturate(.15) sepia(.35) hue-rotate(185deg) saturate(1.6)
 }
-.photo-room[data-location=hall]{--painted-lamp-x:7%;--painted-lamp-y:32%;--lamp-mask-core:15%;--lamp-off-filter:brightness(.63) saturate(.55)}
+.photo-room[data-location=hall][data-lighting=night]{
+ --scene-filter:brightness(.48) saturate(.58);--lamp-light:transparent
+}
 .hall-window{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
 .photo-room[data-lighting=sunset] .hall-window{visibility:hidden}
 .window-sun{opacity:var(--sun-visible);translate:0 var(--sun-drop)}
@@ -145,7 +169,6 @@
  background:radial-gradient(ellipse at 48% 33%,var(--scene-wash),transparent 68%),
  radial-gradient(ellipse at var(--lamp-x,87%) 35%,var(--lamp-light),transparent 37%);
 }
-.photo-room[data-location=hall]{--lamp-x:10%}
 .photo-room[data-location=bathroom]{--lamp-x:51%}
 .photo-room:is([data-location=room],[data-location=hall]) .room-light::before,
 .photo-room:is([data-location=room],[data-location=hall]) .room-light::after{
@@ -201,7 +224,7 @@
 }
 @keyframes dumbbell-curl{45%,58%{transform:rotate(var(--curl,-119deg))}}
 
-.dog-adoption .dog-art{display:block;width:80px;margin:auto}
+.dog-adoption .dog-art{display:block;width:96px;margin:auto}
 .photo-room .actor-position,.photo-room .mascot{pointer-events:none}
 .photo-room :is(.motion-idle,.motion-reacting) .mascot:enabled::after{
  content:'';position:absolute;inset:2% 23% 0;pointer-events:auto
@@ -210,22 +233,33 @@
 .modern button.room-dog:not(.mascot):not(.mini-stats button){
  position:absolute;z-index:3;top:0;left:0;width:clamp(56px,15%,100px);padding:0;
  transform:translate3d(var(--dog-x,0px),var(--dog-y,0px),0) translate(-50%,-88%);
- background:none;border:0;border-radius:0;box-shadow:none;transition:none;visibility:hidden
+ background:none;border:0;border-radius:0;box-shadow:none;filter:none;transition:none;visibility:hidden
 }
 .modern button.room-dog:not(.mascot):not(.mini-stats button)::before{
  content:'';position:absolute;inset:auto 12% 10% 13%;height:12%;border-radius:50%;background:#25162c7a;filter:blur(2px)
 }
-.room-dog .dog-art{position:relative;display:block;width:100%;overflow:visible;transform:scaleX(var(--dog-facing,1));pointer-events:none}
-.modern button.room-dog:not(.mascot):not(.mini-stats button):focus-visible{outline:none}
-.room-dog:is(:hover,:active,:focus-visible,[data-petted=true]) .dog-art{
- filter:drop-shadow(1px 0 #ffeab0) drop-shadow(-1px 0 #ffeab0) drop-shadow(0 1px #ffeab0) drop-shadow(0 -1px #ffeab0) drop-shadow(0 0 5px #ffe49a88)
+.room-dog .dog-art{position:relative;display:block;width:100%;overflow:visible;transform:scaleX(var(--dog-facing,1));pointer-events:none;filter:var(--dog-highlight,none)}
+@media (hover:hover){
+ .room-dog:hover{--dog-highlight:brightness(1.15) drop-shadow(0 0 3px #ffdda8)}
 }
-.dog-heart{position:absolute;left:52%;top:3%;font-size:18px;color:#ff9dd2;text-shadow:0 2px #402442;pointer-events:none;animation:dog-heart-rise 1s ease-out both}
+.room-dog:is(:active,:focus-visible){--dog-highlight:brightness(1.15) drop-shadow(0 0 3px #ffdda8)}
+.modern button.room-dog:not(.mascot):not(.mini-stats button):focus-visible{outline:2px solid #ffeab0;outline-offset:3px;border-radius:10px}
+.dog-hearts{position:absolute;inset:0;pointer-events:none}
+.dog-hearts i{position:absolute;left:44%;top:-5%;font:700 18px/1 system-ui;color:#ff9dd2;text-shadow:0 2px #402442;animation:dog-heart-rise .88s ease-out both}
+.dog-hearts i:first-child{left:23%;top:14%;font-size:13px;animation-delay:.1s}
+.dog-hearts i:last-child{left:68%;top:9%;font-size:15px;animation-delay:.08s}
 .room-dog[data-pose=run] .dog-art{animation:dog-bound .34s ease-in-out infinite}
-.room-dog .dog-leg{transform-origin:34px 39px;animation:dog-step .34s steps(3) infinite}
+.room-dog .dog-leg{transform-origin:39px 45px;animation:dog-step .34s steps(3) infinite}
 .room-dog .dog-leg-back{animation-delay:-.17s}
-.room-dog .dog-tail{transform-origin:21px 35px;animation:dog-tail .55s steps(4) infinite}
+.room-dog .dog-tail{transform-origin:25px 38px;animation:dog-tail .55s steps(4) infinite}
+.room-dog[data-reaction=happy] .dog-tail{animation-duration:.25s}
+.room-dog[data-reaction=bark] .dog-art{transform-origin:50% 88%;animation:dog-bark .62s steps(6) both}
+.room-dog[data-reaction=bark] .dog-bark-rays{animation:dog-bark-rays .62s steps(1) both}
+.room-dog[data-ball-pose=hit] .dog-head{transform-origin:53px 35px;animation:dog-header .3s ease-out both}
 @keyframes dog-heart-rise{to{opacity:0;transform:translateY(-21px)}}
+@keyframes dog-bark{0%,41%,100%{rotate:0deg}15%,62%{rotate:calc(-9deg * var(--dog-facing,1))}}
+@keyframes dog-bark-rays{0%,55%{opacity:1}32%,80%,100%{opacity:0}}
+@keyframes dog-header{0%{transform:rotate(13deg)}32%{transform:translate(1px,-5px) rotate(-17deg)}to{transform:none}}
 @keyframes dog-bound{50%{translate:0 -5px}}
 @keyframes dog-step{0%,100%{transform:skewX(-21deg)}50%{transform:skewX(21deg)}}
 @keyframes dog-tail{50%{transform:rotate(18deg)}}
@@ -250,3 +284,12 @@
 @keyframes finish-bite{0%,27%{scale:1}32%,60%{scale:.83}65%,86%{scale:.6;opacity:1}96%,100%{scale:.2;opacity:0}}
 @keyframes food-crumb{0%,37%{opacity:0;transform:none}40%{opacity:1}65%{transform:translate(calc(var(--crumb-x)*.6),-9px) rotate(35deg)}100%{opacity:0;transform:translate(var(--crumb-x),var(--crumb-y)) rotate(125deg)}}
 @media(prefers-reduced-motion:reduce){.food-crumbs{display:none}}
+
+.dog-care-panel{
+ display:flex;align-items:center;justify-content:space-between;gap:8px;
+ margin:0;padding:5px 8px;border:1px solid #62557b;border-radius:10px;background:#1e2542;
+ font-size:clamp(10px,2.65vw,13px)
+}
+.dog-care-panel>div{display:grid;min-width:0;gap:3px;flex:1}
+.dog-care-panel progress{width:100%;height:6px;accent-color:#ffc06d}
+.modern .dog-care-panel button:not(.mascot):not(.mini-stats button){min-height:34px;padding:4px 7px;font-size:inherit}

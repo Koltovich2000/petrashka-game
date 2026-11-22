@@ -1,9 +1,13 @@
 import type {RangePart} from './rangeDamage';
+import type {AvatarLayer} from './PixelAvatar';
 import {limit} from './rangePhysics';
 export type Box={x:number;y:number;w:number;h:number};
-export type Contact={side:'left'|'right'|'floor'|'ceiling';speed:number;part:RangePart;x:number;y:number};
-export type BodyBox=Box&{part:RangePart};
+export type Contact={side:'left'|'right'|'floor'|'ceiling';speed:number;part:RangePart;layer?:AvatarLayer;x:number;y:number;boundary:boolean};
+export type BodyBox=Box&{part:RangePart;layer?:AvatarLayer};
 export const floorFraction=.91;
+export const floorReserve=52;
+export const wallInset=55/800;
+export const rangeFloor=(height:number)=>Math.min(height*floorFraction,height-floorReserve);
 export function rangeObstacles(w:number,h:number):Box[]{return [{x:60/800*w,y:453/700*h,w:82/800*w,h:92/700*h},{x:660/800*w,y:436/700*h,w:92/800*w,h:109/700*h}];}
 // Sweeping prevents a fast pointer from passing through an obstacle.
 export function sweep(a:Box,b:Box,dx:number,dy:number){
@@ -21,9 +25,10 @@ const overlaps=(a:Box,b:Box)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y
 export function resolveContacts(boxes:BodyBox[],dx:number,dy:number,vx:number,vy:number,w:number,h:number){
  const contacts:Contact[]=[];
  if(!boxes.length)return {dx:0,dy:0,contacts};
- const floor=h*floorFraction;
+ const floor=rangeFloor(h);
+ const leftWall=w*wallInset,rightWall=w-leftWall;
  const obstacles=rangeObstacles(w,h);
- const walls:Box[]=[{x:-w,y:0,w,h:floor},{x:w,y:0,w,h:floor},{x:0,y:-h,w,h},{x:0,y:floor,w,h}];
+ const walls:Box[]=[{x:leftWall-w,y:0,w,h:floor},{x:rightWall,y:0,w,h:floor},{x:0,y:-h,w,h},{x:0,y:floor,w,h}];
  const surfaces=[...walls,...obstacles];
  let movedX=0,movedY=0;
  function shift(x:number,y:number){
@@ -32,8 +37,8 @@ export function resolveContacts(boxes:BodyBox[],dx:number,dy:number,vx:number,vy
   boxes=boxes.map(box=>({...box,x:box.x+x,y:box.y+y}));
  }
  function confine(){
-  const left=-Math.min(...boxes.map(box=>box.x));
-  const right=w-Math.max(...boxes.map(box=>box.x+box.w));
+  const left=leftWall-Math.min(...boxes.map(box=>box.x));
+  const right=rightWall-Math.max(...boxes.map(box=>box.x+box.w));
   const top=-Math.min(...boxes.map(box=>box.y));
   const bottom=floor-Math.max(...boxes.map(box=>box.y+box.h));
   shift(limit(0,left,right),limit(0,top,bottom));
@@ -53,7 +58,7 @@ export function resolveContacts(boxes:BodyBox[],dx:number,dy:number,vx:number,vy
   options.sort((a,b)=>Math.hypot(a.x,a.y)-Math.hypot(b.x,b.y));
   const clear=options.find(({x,y})=>boxes.every(box=>{
    const moved={...box,x:box.x+x,y:box.y+y};
-   return moved.x>=0&&moved.y>=0&&moved.x+moved.w<=w&&moved.y+moved.h<=floor&&!overlaps(moved,obstacle);
+   return moved.x>=leftWall&&moved.y>=0&&moved.x+moved.w<=rightWall&&moved.y+moved.h<=floor&&!overlaps(moved,obstacle);
   }));
   if(clear)shift(clear.x,clear.y);
  }
@@ -65,7 +70,7 @@ export function resolveContacts(boxes:BodyBox[],dx:number,dy:number,vx:number,vy
    const hit=sweep(a,b,dx,dy);if(!hit||hit.t>best)continue;
    best=hit.t;
    const x=a.x+dx*best,y=a.y+dy*best;
-   contact={side:hit.side,part:a.part,speed:Math.abs(horizontal(hit.side)?vx:vy),
+   contact={side:hit.side,part:a.part,layer:a.layer,boundary:walls.includes(b),speed:Math.abs(horizontal(hit.side)?vx:vy),
     x:hit.side==='left'?x:hit.side==='right'?x+a.w:limit(b.x+b.w/2,x,x+a.w),
     y:hit.side==='ceiling'?y:hit.side==='floor'?y+a.h:limit(b.y+b.h/2,y,y+a.h)};
   }

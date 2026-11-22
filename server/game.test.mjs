@@ -8,6 +8,7 @@ import {createHmac,randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {fresh} from '../src/game.ts';
 import {applyClothing} from '../src/economy.ts';
+import {clothingPrice} from '../src/wardrobe.ts';
 import {issueGameSession,gameSessionId} from './game-session.mjs';
 import {createGameApi} from './game-api.mjs';
 import {openGameStore} from './game-store.mjs';
@@ -39,7 +40,8 @@ test('the game API authenticates players, applies server time, and commits billi
  }
 
  const initial=fresh(origin);
- const bought=applyClothing({...initial,economy:{balance:220,xp:500}},'top',1);
+ const purchased=applyClothing({...initial,economy:{balance:clothingPrice('top',1)+100,xp:500}},'top',1);
+ const bought={...purchased,closet:{...purchased.closet,paid:{top:{1:120}}}};
  const trusted=await openGameStore(databasePath);
  await trusted.change('123',()=>({state:{...bought,health:0},events:[]}));
  await trusted.close();
@@ -124,12 +126,13 @@ test('admin directory upgrades existing profiles and applies only authorized, id
  assert.deepEqual(searched.data.players.map(row=>[row.id,row.name]),[['222','@TestPlayer']]);
  assert.equal((await request('/api/admin/players?q=333',token('111'))).data.players[0].id,'333');
 
- const edit={kind:'edit',values:{health:85,mood:59,xp:300},operationId:randomUUID()};
+ const edit={kind:'edit',values:{health:85,mood:59,hygiene:110,xp:300},operationId:randomUUID()};
  assert.equal((await request('/api/admin/players/333',token('222'),edit)).status,403);
  assert.equal((await request('/api/admin/players/999',token('111'),edit)).status,404);
- assert.equal((await request('/api/admin/players/333',token('111'),{...edit,values:{hygiene:101}})).status,400);
+ assert.equal((await request('/api/admin/players/333',token('111'),{...edit,values:{hygiene:-1}})).status,400);
  const edited=await request('/api/admin/players/333',token('111'),edit);
  assert.equal(edited.data.player.values.health,85);
+ assert.equal(edited.data.player.values.hygiene,110);
  assert.equal(edited.data.player.values.mood,59);
  assert.equal(edited.data.player.values.xp,300);
 
@@ -151,8 +154,25 @@ test('admin directory upgrades existing profiles and applies only authorized, id
  const newcomer=await request('/api/telegram/auth',undefined,{initData:signedProfile(444,'NewPlayer')});
  const gift=await request('/api/admin/players/444',token('111'),{...credit,operationId:randomUUID()});
  assert.equal(gift.data.player.balance,1000);
+ const bulk={operationId:randomUUID(),fields:['mood','hygiene'],delta:-65};
+ const adjust=(body,admin='111')=>request('/api/admin/players/adjust',token(admin),body);
+ assert.equal((await adjust(bulk,'222')).status,403);
+ assert.equal((await adjust({...bulk,fields:['balance']})).status,400);
+ const result=await Promise.all([adjust(bulk),adjust(bulk)]);
+ assert.ok(result.every(reply=>reply.data.total===4&&reply.data.affected===4));
+ assert.equal((await adjust({...bulk,delta:-1})).status,409);
+ const card=(await request('/api/admin/players/333',token('111'))).data.player;
+ assert.equal(card.values.mood,0);
+ assert.equal(card.values.hygiene,45);
+ assert.equal(card.balance,1200);
+ const raised=await adjust({operationId:randomUUID(),fields:['energy'],delta:40});
+ assert.equal(raised.data.affected,4);
  const afterIntro=await request('/api/game',newcomer.data.user.gameToken,{location:'room',command:{kind:'intro'}});
  assert.equal(afterIntro.data.state.economy.balance,1000);
+ assert.equal(afterIntro.data.state.hygiene,35);
+ assert.equal(afterIntro.data.state.energy,140);
+ const audit=(await request('/api/admin/journal',token('111'))).data.entries;
+ assert.equal(audit.filter(row=>row.kind==='adjust').length,2);
 });
 
 test('reopening the server keeps intro scenes, tutorial progress and money for the same Telegram ID',async t=>{
@@ -182,12 +202,117 @@ test('reopening the server keeps intro scenes, tutorial progress and money for t
  assert.equal((await command({kind:'introNext',scene:0})).introScene,1);
  await command({kind:'introNext',scene:1});
  await command({kind:'introNext',scene:2});
- await command({kind:'intro'});
+ assert.equal((await command({kind:'intro',characterName:'а'.repeat(25)})).introCompleted,false);
+ await command({kind:'intro',characterName:'  Миша  '});
  const before=await command({kind:'care',action:'feed',food:'free'});
  assert.ok(before.tutorial>0);
  await restart();
  const restored=await command({kind:'sync'});
  assert.equal(restored.introCompleted,true);
+ assert.equal(restored.characterName,'Миша');
  assert.equal(restored.tutorial,before.tutorial);
  assert.deepEqual(restored.economy,before.economy);
+});
+
+test('global pause and poll survive server reopen, while voting and its deadline use wall time',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'petrashka-world-'));
+ const databasePath=join(directory,'game.sqlite');
+ const origin=Date.now();
+ let now=origin;
+ const botToken='test-world-token';
+ const options={botToken,adminIds:'111',game:{databasePath,databaseUrl:'',clock:()=>now},gifts:{databasePath:':memory:'}};
+ const prepare=await openGameStore(databasePath);
+ await prepare.change('222',()=>({state:fresh(origin),events:[]}));
+ await prepare.close();
+ let server=createAppServer(options);
+ t.after(async()=>{server.emit('close');await rm(directory,{recursive:true,force:true});});
+
+ async function request(url,player,body){
+  const req=Readable.from(body?[Buffer.from(JSON.stringify(body))]:[]);
+  Object.assign(req,{url,method:body?'POST':'GET',headers:{
+   'content-type':'application/json',authorization:'Bearer '+issueGameSession(player,botToken),
+  }});
+  let status,data;
+  await server.listeners('request')[0](req,{setHeader(){},writeHead(value){status=value;},end(raw){data=JSON.parse(raw);}});
+  return {status,data};
+ }
+ const game=(command={kind:'sync'},player='222')=>request('/api/game',player,{location:'room',command});
+ const world=command=>request('/api/admin/world','111',command);
+ now+=3*60_000;
+ const paused={kind:'pause',paused:true};
+ assert.equal((await request('/api/admin/world','222',paused)).status,403);
+ assert.equal((await world(paused)).data.paused,true);
+ const id=randomUUID();
+ const poll={kind:'poll',id,question:'Куда поедем?',options:['В город','За город'],minutes:15};
+ const published=await Promise.all([world(poll),world(poll)]);
+ assert.ok(published.every(answer=>answer.status===200));
+ assert.equal((await world({...poll,id:randomUUID()})).status,409);
+ assert.equal((await game()).data.world.poll.counts,null);
+ assert.equal((await game({kind:'vote',pollId:id,choice:0})).data.world.poll.choice,0);
+ assert.deepEqual((await game({kind:'vote',pollId:id,choice:1})).data.world.poll.counts,[1,0]);
+ assert.equal((await game(undefined,'333')).data.world.poll.counts,null);
+
+ server.emit('close');
+ server=createAppServer(options);
+ now+=30*60_000;
+ const stillPaused=await game({kind:'care',action:'sleep'});
+ assert.equal(stillPaused.data.state.sleepUntil,null);
+ assert.equal(stillPaused.data.state.food,100);
+ assert.equal(stillPaused.data.world.paused,true);
+ assert.deepEqual((await game(undefined,'333')).data.world.poll.counts,[1,0]);
+ assert.equal((await game({kind:'vote',pollId:id,choice:1},'333')).status,409);
+ assert.equal((await world({kind:'pause',paused:false})).data.paused,false);
+ now+=7*60_000;
+ const resumed=await game();
+ assert.equal(resumed.data.state.food,99);
+ assert.equal(resumed.data.state.updated,origin+10*60_000);
+ assert.equal(resumed.data.world.paused,false);
+});
+
+test('character names are unique in concurrent requests and legacy conflicts keep player progress',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'petrashka-names-'));
+ const databasePath=join(directory,'game.sqlite');
+ const now=Date.now();
+ const legacy=new DatabaseSync(databasePath);
+ legacy.exec('CREATE TABLE petrashka_players (id TEXT PRIMARY KEY, state TEXT NOT NULL)');
+ const add=legacy.prepare('INSERT INTO petrashka_players VALUES (?,?)');
+ add.run('111',JSON.stringify({...fresh(now-60_000),characterName:'Рыжий Кот'}));
+ add.run('222',JSON.stringify({...fresh(now),characterName:'РЫЖИЙ  КОТ',economy:{balance:432,xp:500}}));
+ legacy.close();
+ let api;
+ const botToken='temporary-names-token';
+ const options={botToken,admins:new Set(),databasePath,databaseUrl:'',clock:()=>now};
+ api=createGameApi(options);
+ t.after(async()=>{await api.close();await rm(directory,{recursive:true,force:true});});
+
+ async function command(player,command){
+  const req=Readable.from([Buffer.from(JSON.stringify({location:'room',command}))]);
+  req.method='POST';
+  req.headers={'content-type':'application/json',authorization:'Bearer '+issueGameSession(player,botToken,now)};
+  let status,data;
+  await api.handle(req,{writeHead(code){status=code;},end(raw){data=JSON.parse(raw);}});
+  return {status,data};
+ }
+ const sync=player=>command(player,{kind:'sync'});
+ const choose=(player,characterName)=>command(player,{kind:'intro',characterName});
+ assert.equal((await sync('111')).data.needsCharacterName,false);
+ assert.equal((await sync('222')).data.needsCharacterName,true);
+ const taken=await choose('222','  рыжий кот ');
+ assert.deepEqual(taken,{status:409,data:{error:'character_name_taken'}});
+ const recovered=(await choose('222','  Лисёнок  ')).data;
+ assert.equal(recovered.needsCharacterName,false);
+ assert.equal(recovered.state.characterName,'Лисёнок');
+ assert.equal(recovered.state.economy.balance,432);
+ assert.equal(recovered.state.economy.xp,500);
+ assert.equal(recovered.state.tutorial,fresh(now).tutorial);
+
+ const results=await Promise.all([choose('333','Зефир'),choose('444','  ЗЕФИР ')]);
+ assert.deepEqual(results.map(result=>result.status).sort(),[200,409]);
+ const loser=results[0].status===409?'333':'444';
+ assert.equal((await sync(loser)).data.state.introCompleted,false);
+ await api.close();
+ api=createGameApi(options);
+ assert.equal((await choose(loser,'зефир')).status,409);
+ assert.equal((await choose(loser,'Мармелад')).data.state.characterName,'Мармелад');
+ assert.equal((await choose('555','Лисе\u0308нок')).status,409);
 });

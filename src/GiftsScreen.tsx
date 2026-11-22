@@ -1,4 +1,5 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {GiftArtwork,premiumGiftPrice} from './GiftArtwork';
 import {GameIcon} from './GameIcon';
 import {giftPaymentAvailable,giftPaymentRequest,onTelegramLifecycle,openGiftInvoice} from './telegram';
 import {maxGiftWishLength} from './giftWish';
@@ -34,6 +35,7 @@ export function GiftsScreen({active}:{active:boolean}) {
  const [notice,setNotice] = useState('');
  const dialog = useRef<HTMLDialogElement>(null);
  const catalogRequest = useRef<AbortController|null>(null);
+ const catalogScroll = useRef(0);
 
  useEffect(() => {
   if (!active) return;
@@ -80,6 +82,10 @@ export function GiftsScreen({active}:{active:boolean}) {
   if ((!active || !modal) && element?.open) element.close();
  },[active,modal]);
 
+ useLayoutEffect(() => {
+  if(dialog.current)dialog.current.scrollTop=modal?.kind==='catalog'?catalogScroll.current:0;
+ },[modal?.kind]);
+
  useEffect(() => {
   if (active) return;
   setModal(null);
@@ -87,6 +93,7 @@ export function GiftsScreen({active}:{active:boolean}) {
  },[active]);
 
  async function openCatalog() {
+  catalogScroll.current=0;
   setModal({kind:'catalog'});
   setAnonymous(false);
   setWish('');
@@ -158,7 +165,7 @@ export function GiftsScreen({active}:{active:boolean}) {
      const rank = place ? ['gold','silver','bronze'][place-1] : undefined;
      return <div className="gifts-slot" key={gift?.id ?? 'empty-' + index}>
       {gift && <button type="button" className="gifts-tile" data-rank={rank} onClick={() => setModal({kind:'details',gift})}>
-       <GameIcon name={gift.icon}/>
+       <GiftArtwork icon={gift.icon} price={gift.price}/>
        <span className="gifts-plaque">
         <strong>{gift.name}</strong>
         <span className="gifts-sender" dir="auto">{gift.sender}</span>
@@ -176,14 +183,14 @@ export function GiftsScreen({active}:{active:boolean}) {
    <span aria-live="polite">{wall?.page ?? 1} / {wall?.pages ?? 1}</span>
    <button type="button" aria-label="Следующая страница" disabled={!wall || changingPage || page >= wall.pages} onClick={() => setPage(page + 1)}>→</button>
   </nav>
-  <dialog ref={dialog} className="gifts-dialog" aria-labelledby="gift-dialog-title"
+  <dialog ref={dialog} className="gifts-dialog" data-kind={modal?.kind} aria-labelledby="gift-dialog-title"
    onClose={() => {if (!dialog.current?.open) setModal(null);}}
    onCancel={event => {if (paying) event.preventDefault();}}
    onClick={event => {if (event.target === dialog.current && !paying) setModal(null);}}>
    {modal && <div className="gifts-dialog-content">
-    <button type="button" className="gifts-dialog-close" aria-label="Закрыть" disabled={paying} onClick={() => setModal(null)}>×</button>
+    {modal.kind!=='catalog'&&<button type="button" className="gifts-dialog-close" aria-label="Закрыть" disabled={paying} onClick={() => setModal(null)}>×</button>}
     {modal.kind === 'details' && <>
-     <div className="gifts-detail-art"><GameIcon name={modal.gift.icon}/></div>
+     <div className="gifts-detail-art"><GiftArtwork icon={modal.gift.icon} price={modal.gift.price}/></div>
      <h2 id="gift-dialog-title">{modal.gift.name}</h2>
      <dl className="gifts-facts">
       <div><dt>Отправитель</dt><dd dir="auto">{modal.gift.sender}</dd></div>
@@ -196,16 +203,22 @@ export function GiftsScreen({active}:{active:boolean}) {
      </div>}
     </>}
     {modal.kind === 'catalog' && <>
-     <h2 id="gift-dialog-title">Выбрать подарок</h2>
+     <div className="gifts-catalog-header">
+      <h2 id="gift-dialog-title">Выбрать подарок</h2>
+      <button type="button" className="gifts-dialog-close" aria-label="Закрыть" onClick={()=>setModal(null)}>×</button>
+     </div>
      {catalogError && <p role="status">Не удалось загрузить каталог. <button type="button" onClick={openCatalog}>Повторить</button></p>}
      {!catalog && !catalogError && <p role="status">Загружаем каталог…</p>}
      {catalog && <div className="gifts-catalog">{catalog.catalog.map(gift =>
-      <button key={gift.id} type="button" onClick={() => setModal({kind:'confirm',gift})}>
-       <GameIcon name={gift.icon}/><strong>{gift.name}</strong><Stars price={gift.price}/>
+      <button key={gift.id} type="button" data-gift={gift.icon} data-premium={gift.price>=premiumGiftPrice||undefined} onClick={()=>{
+       catalogScroll.current=dialog.current?.scrollTop??0;
+       setModal({kind:'confirm',gift});
+      }}>
+       <GiftArtwork icon={gift.icon} price={gift.price}/><strong>{gift.name}</strong><Stars price={gift.price}/>
       </button>)}</div>}
     </>}
     {modal.kind === 'confirm' && <>
-     <div className="gifts-detail-art"><GameIcon name={modal.gift.icon}/></div>
+     <div className="gifts-detail-art"><GiftArtwork icon={modal.gift.icon} price={modal.gift.price}/></div>
      <h2 id="gift-dialog-title">{modal.gift.name}</h2>
      <p className="gifts-confirm-price"><Stars price={modal.gift.price}/> Telegram Stars</p>
      <label className="gifts-wish-field">

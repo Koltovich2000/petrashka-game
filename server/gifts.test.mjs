@@ -17,9 +17,9 @@ const webhookSecret = 'test_secret_123456789012345678901234567890';
 const webhook = '/api/telegram/gifts-webhook';
 const spender = {id:105, first_name:'Имя', username:'nickname'};
 const secondPlayer = {id:106, first_name:'Зритель'};
-const burger = giftCatalog.find(item => item.id === 'burger');
-const crown = giftCatalog.find(item => item.id === 'crown');
-const mug = giftCatalog.find(item => item.id === 'mug');
+const shawarma = giftCatalog.find(item => item.id === 'shawarma');
+const crown = giftCatalog.find(item => item.id === 'hype-crown');
+const slipper = giftCatalog.find(item => item.id === 'mom-slipper');
 
 function sign(user) {
  const params = new URLSearchParams({auth_date:String(Math.floor(Date.now() / 1000)), user:JSON.stringify(user)});
@@ -56,17 +56,17 @@ test('publishes a gift only after verified Telegram payment, with idempotency an
  const wall = async () => (await request(api,'/api/gifts')).body;
  const status = (id,user = spender) => request(api,'/api/gifts/status',{id,initData:sign(user)});
  const invoice = (user, anonymous, wish) => request(api,'/api/gifts/invoice',{
-  initData:sign(user),giftId:burger.id,anonymous,wish,price:1,sender:'Подмена',
+  initData:sign(user),giftId:shawarma.id,anonymous,wish,price:1,sender:'Подмена',
  });
  const checkout = (id,queryId,fields = {}) => ({
-  pre_checkout_query:{id:queryId,from:spender,invoice_payload:id,total_amount:burger.price,currency:'XTR',...fields},
+  pre_checkout_query:{id:queryId,from:spender,invoice_payload:id,total_amount:shawarma.price,currency:'XTR',...fields},
  });
  const successful = (id,chargeId) => ({message:{
   from:spender,date:1700000000,successful_payment:{
-   invoice_payload:id,total_amount:burger.price,currency:'XTR',telegram_payment_charge_id:chargeId,
+   invoice_payload:id,total_amount:shawarma.price,currency:'XTR',telegram_payment_charge_id:chargeId,
   },
  }});
- const denied = await request(api,'/api/gifts/invoice',{initData:sign(spender).replace('nickname','fake'),giftId:burger.id});
+ const denied = await request(api,'/api/gifts/invoice',{initData:sign(spender).replace('nickname','fake'),giftId:shawarma.id});
  assert.equal(denied.status,401);
  assert.equal((await invoice(spender,true,'я'.repeat(maxGiftWishLength+1))).body.error,'invalid_gift_wish');
  assert.equal(calls.length,0);
@@ -74,7 +74,7 @@ test('publishes a gift only after verified Telegram payment, with idempotency an
  const created = await invoice(spender,true,`  ${wish}  `);
  assert.equal(created.status,200);
  const {id} = created.body;
- assert.deepEqual(calls[0].data.prices,[{label:burger.name,amount:burger.price}]);
+ assert.deepEqual(calls[0].data.prices,[{label:shawarma.name,amount:shawarma.price}]);
  assert.equal(calls[0].data.currency,'XTR');
  assert.equal(calls[0].data.payload,id);
  assert.equal((await wall()).total,0);
@@ -92,7 +92,7 @@ test('publishes a gift only after verified Telegram payment, with idempotency an
  assert.deepEqual(replies.map(reply => reply.status),[200,200]);
  assert.equal((await status(id)).body.status,'paid');
  assert.deepEqual(await wall(),{gifts:[{
-  id,name:burger.name,icon:burger.icon,price:burger.price,currency:'XTR',sender:'Аноним',receivedAt:1700000000000,wish,priceRank:1,
+  id,name:shawarma.name,icon:shawarma.icon,price:shawarma.price,currency:'XTR',sender:'Аноним',receivedAt:1700000000000,wish,priceRank:1,
  }],page:1,pages:1,total:1,senders:1});
  const duplicate = (await invoice(spender,false)).body.id;
  await update(checkout(duplicate,'checkout-duplicate'));
@@ -109,6 +109,15 @@ test('publishes a gift only after verified Telegram payment, with idempotency an
  assert.equal((await status(id)).body.status,'refunded');
  await update(successful(id,'charge-1'));
  assert.equal((await wall()).total,1);
+ const catalog = (await request(api,'/api/gifts/catalog')).body.catalog;
+ assert.equal(catalog.length,48);
+ assert.equal(new Set(catalog.map(gift => gift.id)).size,catalog.length);
+ assert.ok(catalog.every(gift => Number.isInteger(gift.price) && gift.price>=25 && gift.price<=5000));
+ assert.ok(!catalog.some(gift => gift.id==='drone'));
+ const expandedGift = catalog.find(gift => gift.id==='fireworks');
+ const expandedInvoice = await request(api,'/api/gifts/invoice',{initData:sign(spender),giftId:expandedGift.id,price:1});
+ assert.equal(expandedInvoice.status,200);
+ assert.deepEqual(calls.at(-1).data.prices,[{label:expandedGift.name,amount:expandedGift.price}]);
 });
 
 async function checkRanking(open, t) {
@@ -125,7 +134,7 @@ async function checkRanking(open, t) {
  assert.deepEqual(await store.page(1),{gifts:[],total:0,senders:0,page:1,pages:1});
  const ids = [];
  for (let index = 0; index < 16; index++) {
-  ids.push(await paid(burger,index,start + (index < 2 ? 3 - index : index + 2)));
+  ids.push(await paid(shawarma,index,start + (index < 2 ? 3 - index : index + 2)));
  }
  const expensive = await paid(crown,'highest',start + 100);
  await store.close();
@@ -155,10 +164,11 @@ test('upgrades a SQLite gift database with already paid gifts',async t => {
  const directory = await mkdtemp(join(tmpdir(),'petrashka-gifts-'));
  t.after(() => rm(directory,{recursive:true,force:true}));
  const path = join(directory,'gifts.sqlite');
+ const legacyGift={id:'burger',name:'Бургер',icon:'food',price:100,currency:'XTR'};
  const original = await createGiftStore(path);
- const id = await original.create(burger,{id:'105',displayName:'Имя'});
- assert.ok(await original.checkout(id,'105',burger.price,'XTR','legacy-checkout'));
- assert.ok(await original.complete(id,'105',burger.price,'XTR','legacy-charge',1700000000000));
+ const id = await original.create(legacyGift,{id:'105',displayName:'Имя'});
+ assert.ok(await original.checkout(id,'105',legacyGift.price,'XTR','legacy-checkout'));
+ assert.ok(await original.complete(id,'105',legacyGift.price,'XTR','legacy-charge',1700000000000));
  await original.close();
  const legacy = new DatabaseSync(path);
  legacy.exec('ALTER TABLE gifts DROP COLUMN wish');
@@ -169,6 +179,8 @@ test('upgrades a SQLite gift database with already paid gifts',async t => {
   const [gift] = (await upgraded.page(1)).gifts;
   assert.equal(gift.id,id);
   assert.equal(gift.wish,'');
+  assert.equal(gift.name,legacyGift.name);
+  assert.equal(gift.icon,legacyGift.icon);
   assert.equal(await upgraded.paymentStatus(id,'105'),'paid');
  } finally {
   await upgraded.close();
@@ -197,8 +209,8 @@ test('admin gift moderation keeps payment data and manual positions across pages
  }
 
  const top=await pay(crown);
- for(let i=0;i<15;i++)await pay(burger);
- const last=await pay(mug,true);
+ for(let i=0;i<15;i++)await pay(shawarma);
+ const last=await pay(slipper,true);
  assert.equal((await page(2)).gifts[1].id,last.id);
  assert.equal((await moderate(last.id,{kind:'remove'},{authorization:'Bearer '+issueGameSession('106',botToken)})).status,403);
  assert.equal((await moderate(last.id,{kind:'edit',wish:'x'.repeat(maxGiftWishLength+1)})).status,400);

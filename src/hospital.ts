@@ -11,6 +11,9 @@ type Asset={name:string;price:number}&(
 );
 export type Hospital={status:'hospitalized';startedAt:number;billedHours:number;balanceSpent:number;cost:number;debt:number;sales:Asset[];notice:number};
 
+const legacyFurniturePrices={yoga:7500,dumbbells:18000,tray:35000};
+const legacyBedPrices={comfort:15000,premium:35000};
+
 export function admit(game:Game,at:number):Game{
  return {...game,health:0,updated:at,roomAction:null,sleepUntil:null,restUntil:null,
   hospital:{status:'hospitalized',startedAt:at,billedHours:0,balanceSpent:0,cost:0,debt:0,sales:[],notice:0}};
@@ -19,11 +22,11 @@ export function admit(game:Game,at:number):Game{
 function assets(game:Game):Asset[]{
  const items:Asset[]=[];
  for(const item of furnitureCatalog)if(game.furniture[item.id]){
-  const price=game.furnitureCosts[item.id]??item.price;
+  const price=game.furnitureCosts[item.id]??('art' in item?item.price:legacyFurniturePrices[item.id]);
   if(price>0)items.push({kind:'furniture',id:item.id,name:item.name,price});
  }
  if(game.bed!=='standard'){
-  const item=beds[game.bed],price=game.bedPurchasePrice??item.price;
+  const item=beds[game.bed],price=game.bedPurchasePrice??legacyBedPrices[game.bed];
   if(price>0)items.push({kind:'bed',id:game.bed,name:item.name,price});
  }
  const closet=game.closet;

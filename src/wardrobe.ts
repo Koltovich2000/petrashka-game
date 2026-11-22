@@ -61,7 +61,7 @@ export function parseCloset(raw:unknown,migrateOwnership=false):Closet|null {
   if(Array.isArray(owned))result.owned[category]=[...new Set([...result.owned[category],...owned.filter(i=>Number.isInteger(i)&&i>=0&&i<catalog[category].length)])];
   for(const index of result.owned[category]){
    if(index===defaultOutfit[category])continue;
-   const price=saved.paid?.[category]?.[index]??(migrateOwnership&&Array.isArray(owned)&&owned.includes(index)?clothingPrice(index):0);
+   const price=saved.paid?.[category]?.[index]??(migrateOwnership&&Array.isArray(owned)&&owned.includes(index)?80+index*40:0);
    if(Number.isSafeInteger(price)&&price>0)(result.paid[category]??={})[index]=price;
   }
  }
@@ -76,7 +76,17 @@ export function parseCloset(raw:unknown,migrateOwnership=false):Closet|null {
  result.activePreset=result.presets.some(p=>p.id===saved.activePreset)?saved.activePreset!:null;
  return result;
 }
-export const clothingPrice=(index:number)=>80+index*40;
+const wardrobePrices:Record<Category,Partial<Record<number,number>>>={
+ top:{1:950,2:1450,5:2300,6:5200},
+ pants:{2:850,6:2000,7:3150,8:3500},
+ shoes:{1:700,2:1100,3:1700,9:650},
+ hat:{6:4800,7:2400},
+ accessory:{1:650,3:6200,5:1100,6:2600,8:1900},
+};
+export function clothingPrice(category:Category,index:number){
+ if(index===defaultOutfit[category])return 0;
+ return wardrobePrices[category][index]??Infinity;
+}
 export const clothingLevel=(index:number)=>1+Math.floor(index/3);
 
 export function removePurchasedClothing(closet:Closet,category:Category,index:number):Closet{

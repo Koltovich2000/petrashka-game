@@ -26,12 +26,13 @@ test('liquidation waits for the full price, sells cheapest first and restores fr
  game=applyClothing(game,'shoes',2);
  const admitted=advance({...game,health:0,economy:{...game.economy,balance:0}},0);
  assert.equal(advance(admitted,hour).hospital?.sales.length,0);
- const first=advance(admitted,2*hour);
- assert.deepEqual(first.hospital?.sales.map(({price})=>price),[120]);
+ assert.equal(advance(admitted,9*hour).hospital?.sales.length,0);
+ const first=advance(admitted,10*hour);
+ assert.deepEqual(first.hospital?.sales.map(({price})=>price),[950]);
  assert.deepEqual(first.closet?.outfit,defaultOutfit);
  assert.ok(first.closet?.owned.shoes.includes(2));
  const all=advance(first,500*hour);
- assert.deepEqual(all.hospital?.sales.map(({price})=>price),[120,160,7500]);
+ assert.deepEqual(all.hospital?.sales.map(({price})=>price),[950,1100,1800]);
  assert.equal(all.furniture.yoga,undefined);
  assert.ok(all.closet?.owned.top.includes(defaultOutfit.top));
  assert.deepEqual(parseSave(JSON.stringify(all),500*hour),all);

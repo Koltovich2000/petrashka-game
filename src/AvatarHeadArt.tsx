@@ -9,7 +9,6 @@ const rangeHair=[
 ];
 const profileHair='M190 60H751V356H682L663 317L646 283L620 273L596 292L583 329L567 322L543 302L520 333L515 370L500 384V452L485 446L448 411L421 415L402 430L390 460L393 486L415 508L445 519L465 513L456 538L433 566H190Z';
 const dryShades=[1,.94,.86,.77,.67] as const;
-export const rearHairColors=['#b8b8c2','#adafbc','#9da2b1','#8c94a7','#7d89a0'] as const;
 
 function HairTint({path,wetness,children}:{path:string;wetness:HairWetness;children:ReactNode}){
  const clip=useId(),filter=useId();

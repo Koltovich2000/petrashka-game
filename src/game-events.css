@@ -1,0 +1,35 @@
+.player-tasks .game-icon{width:24px;height:24px}
+.world-events{display:grid;gap:4px;padding:4px max(8px,var(--app-safe-right)) 4px max(8px,var(--app-safe-left))}
+.world-events p{margin:0}
+.world-paused{padding:5px 8px;border:1px solid #d5a253;border-radius:8px;color:#ffe4a3;background:#382742;text-align:center;font-size:12px}
+.modern button.world-poll-button,.world-poll-button{
+ display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:7px;
+ width:100%;padding:5px 8px;font-size:12px;text-align:start
+}
+.world-poll-button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.world-poll-button time,.poll-time time{font-variant-numeric:tabular-nums;color:#ffdb91}
+.event-dialog{
+ width:min(440px,calc(100% - 24px));max-height:calc(var(--tg-viewport-stable-height,100dvh) - 24px);
+ padding:16px;border:2px solid #8e74bb;border-radius:18px;background:#222039;color:#fff4fb;
+ box-shadow:0 12px 40px #100a22b0;overflow:auto;overscroll-behavior:contain
+}
+.event-dialog::backdrop{background:#100a22bd}
+.event-dialog header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.event-dialog h2{margin:0;font-size:20px;display:flex;align-items:center;gap:8px}
+.event-dialog .event-close{padding:2px;min-width:36px;height:36px;font-size:23px}
+.task-notebook{background:#2b2042;border-left:10px solid #744991}
+.task-reset,.poll-time,.task-tier{color:#d1bee5;font-size:13px}
+.task-notebook ol,.poll-results{display:grid;gap:8px;list-style:none;padding:0}
+.task-notebook li{display:grid;gap:6px;padding:10px;border:1px solid #655080;border-radius:10px;background:#352950}
+.task-notebook li div,.poll-results li div{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.task-notebook li b{color:#ffe49e}
+.event-dialog progress,.poll-results progress{width:100%;accent-color:#e0ac71}
+.poll-question,.poll-options button,.poll-results strong{overflow-wrap:anywhere}
+.poll-options{display:grid;gap:8px}
+.poll-options button{min-height:42px}
+.poll-results span{white-space:nowrap}
+.player-tasks{position:relative;overflow:visible}
+.task-reward-mark{position:absolute;z-index:1;top:-3px;right:-4px;display:grid;place-items:center;
+ width:16px;height:16px;border:1px solid #142511;border-radius:50%;background:#9be488;color:#152e1a;font:700 12px/1 system-ui}
+.past-task-rewards{display:grid;gap:8px;list-style:none;padding:0}
+.task-notebook li button{min-height:38px;margin-top:3px}

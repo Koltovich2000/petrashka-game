@@ -1,11 +1,14 @@
 import {useEffect,useRef,useState,type RefObject} from 'react';
 import {GameIcon} from './GameIcon';
+import type {DogBallPartner,DogHeader} from './Dog';
+import {playRoomSound,prepareRoomSound} from './roomSoundEffects';
 
 type Point={x:number;y:number};
-type Phase='ready'|'kicking'|'outbound'|'floor'|'returning';
+type Phase='ready'|'kicking'|'outbound'|'floor'|'returning'|'passing-dog';
 type Kick={foot:'left'|'right';step:'center'|'left'|'right'};
 const kickWindup=200;
 const returnDuration=720;
+const dogPassDuration=670;
 const firstKick:Kick={foot:'left',step:'center'};
 const receptions:Kick[]=[
  {foot:'right',step:'center'},
@@ -14,10 +17,11 @@ const receptions:Kick[]=[
  {foot:'left',step:'center'},
 ];
 
-export function BallScene({actor,round,onReturn}:{actor:RefObject<HTMLDivElement|null>;round:number;onReturn:()=>void}){
+export function BallScene({actor,dogPartner,round,onReturn}:{actor:RefObject<HTMLDivElement|null>;dogPartner:RefObject<DogBallPartner|null>;round:number;onReturn:()=>void}){
  const field=useRef<HTMLDivElement>(null);
  const ball=useRef<HTMLButtonElement>(null);
  const frame=useRef(0);
+ const dogPass=useRef<DogHeader|null>(null);
  const position=useRef<Point>({x:.40,y:.77});
  const phase=useRef<Phase>('ready');
  const [shownPhase,setShownPhase]=useState<Phase>('ready');
@@ -58,13 +62,36 @@ export function BallScene({actor,round,onReturn}:{actor:RefObject<HTMLDivElement
   }
   frame.current=requestAnimationFrame(step);
  }
- function kickOut(){
+ function sendOut(x=.82,duration=1450,arc=.225){
   const height=field.current?.clientHeight??630;
-  const landing={x:.82,y:1-68/Math.max(height,300)};
+  const landing={x,y:1-68/Math.max(height,300)};
   setPhase('outbound');
-  fly(()=>landing,1450,.225,()=>setPhase('floor'));
+  fly(()=>landing,duration,arc,()=>setPhase('floor'));
+ }
+ function kickOut(){
+  playRoomSound('ball');
+  const area=field.current?.getBoundingClientRect();
+  const partner=dogPartner.current;
+  const pass=area?.width&&area.height&&partner&&Math.random()<.28
+   ?partner.preparePass(area.left+position.current.x*area.width,dogPassDuration):undefined;
+  if(!pass){sendOut();return;}
+  dogPass.current?.cancel();
+  dogPass.current=pass;
+  setPhase('passing-dog');
+  const fallback={x:.82,y:.77};
+  fly(()=>{
+   const bounds=field.current?.getBoundingClientRect(),head=pass.head();
+   if(!bounds?.width||!bounds.height||!head)return fallback;
+   return {x:(head.x-bounds.left)/bounds.width,y:(head.y-bounds.top)/bounds.height};
+  },dogPassDuration,.13,()=>{
+   if(!pass.deflect()){pass.cancel();sendOut();return;}
+   playRoomSound('ball');
+   const {x}=position.current;
+   sendOut(x>.56?Math.max(.45,x-.25):Math.min(.83,x+.27),940,.12);
+  });
  }
  useEffect(()=>{
+  void prepareRoomSound('ball').catch(()=>{});
   show(boot(firstKick.foot));
   const launch=window.setTimeout(()=>{
    setPhase('kicking');
@@ -79,11 +106,12 @@ export function BallScene({actor,round,onReturn}:{actor:RefObject<HTMLDivElement
    }
    frame.current=requestAnimationFrame(swing);
   },280);
-  return()=>{window.clearTimeout(launch);cancelAnimationFrame(frame.current);};
+  return()=>{window.clearTimeout(launch);cancelAnimationFrame(frame.current);dogPass.current?.cancel();};
  },[]);
 
  function sendBack(){
   if(phase.current!=='outbound'&&phase.current!=='floor')return;
+  playRoomSound('ball');
   const reception=receptions[round%receptions.length];
   setKick(reception);
   setPhase('returning');
@@ -98,7 +126,7 @@ export function BallScene({actor,round,onReturn}:{actor:RefObject<HTMLDivElement
  return <div ref={field} className="ball-play-field">
   <button ref={ball} type="button" className="scene-pass-ball" data-phase={shownPhase}
    data-foot={kick.foot} data-step={shownPhase==='returning'||shownPhase==='kicking'?kick.step:'center'}
-   aria-label={shownPhase==='floor'?'Вернуть мяч с пола':'Отбить мяч в воздухе'}
+   aria-label={shownPhase==='floor'?'Вернуть мяч с пола':shownPhase==='passing-dog'?'Мяч летит к собаке':'Отбить мяч в воздухе'}
    aria-disabled={shownPhase!=='outbound'&&shownPhase!=='floor'}
    onPointerDown={event=>{if(event.button===0)sendBack();}}
    onClick={event=>{if(event.detail===0)sendBack();}}>

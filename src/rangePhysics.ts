@@ -1,12 +1,12 @@
 // Physics is measured in CSS pixels and seconds, independent of refresh rate.
 export const limit=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
 export type Spring={value:number;velocity:number};
-export function springStep(s:Spring,target:number,dt:number):Spring{
+export function springStep(s:Spring,target:number,dt:number,stiffness=135,damping=15):Spring{
  // Small substeps keep joints stable after a slow Telegram WebView frame.
  let value=s.value,velocity=s.velocity;
  const count=Math.max(1,Math.ceil(dt/.008)),step=dt/count;
  for(let i=0;i<count;i++){
-  velocity+=((target-value)*135-velocity*15)*step;
+  velocity+=((target-value)*stiffness-velocity*damping)*step;
   value+=velocity*step;
  }
  return {value,velocity};

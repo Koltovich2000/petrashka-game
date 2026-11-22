@@ -1,69 +1,159 @@
-import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {useEffect,useImperativeHandle,useLayoutEffect,useRef,useState,type Ref} from 'react';
 import type {Location} from './activities';
 import {dogPointAt,dogRoute,measureDogRoute,type GroundPoint} from './dogNavigation';
 import {dogVisitAt,dogVisitDuration} from './dogSchedule';
-import {playDogBark,sound,unlockSound} from './sound';
+import {unlockSound} from './sound';
+import {playRoomSound,prepareRoomSound} from './roomSoundEffects';
 
-export function DogArt({sitting=false,barking=false}:{sitting?:boolean;barking?:boolean}){
- return <svg className="dog-art" viewBox="0 0 74 57" shapeRendering="crispEdges" aria-hidden="true">
-  <g stroke="#2c2037" strokeWidth="2.5" strokeLinejoin="miter">
-   <path className="dog-tail" d="M27 32L16 30L8 21H4V26L10 36L25 40Z" fill="#ba7340"/>
-   {sitting?<path d="M36 31L31 29L22 33L17 43V49H35L39 45V36Z" fill="#b46b3d"/>:
-    <>
-     <path className="dog-leg dog-leg-back" d="M27 37H19V48H24L28 45Z M47 37H40V48H45L48 45Z" fill="#8c4f35"/>
-     <path className="dog-leg dog-leg-front" d="M32 38H24V50H31L34 47Z M50 38H44V50H51L53 47Z" fill="#e39b56"/>
+type DogArtProps={sitting?:boolean;barking?:boolean;barkKey?:number;happy?:boolean;preview?:boolean};
+
+export function DogArt({sitting=false,barking=false,barkKey,happy=false,preview=false}:DogArtProps){
+ return <svg className="dog-art" viewBox="0 0 84 62" shapeRendering="crispEdges" aria-hidden="true">
+  <g stroke="#2d2035" strokeWidth="2.6" strokeLinejoin="miter">
+   <path className="dog-tail" fill="#b46b3c"
+    d="M28 39H21L15 35 10 29V21L13 18H16L19 22 17 26 19 30 25 32H30Z"/>
+   {sitting
+    ? <path fill="#af653b" d="M37 39H29L22 44 20 50V54L23 56H39L42 53V47Z"/>
+    : <>
+     <path className="dog-leg dog-leg-back" fill="#a45b35"
+      d="M35 42L30 49 31 53 38 55 42 51 39 45ZM52 42L54 50 58 54H63L64 50 59 43Z"/>
+     <path className="dog-leg dog-leg-front" fill="#e69a54"
+      d="M28 43L25 48 20 51V55L25 56 31 51 35 46ZM45 43V49L48 56 53 57 56 54 54 49 53 44Z"/>
     </>}
-   <path d="M23 30L38 24L51 28L55 38L49 43H24L18 39V35Z" fill="#c77d45"/>
-   {sitting&&<path d="M50 36H41L38 47V50H50L53 46Z" fill="#e9a564"/>}
-   <path d="M43 24L53 25L56 32L49 39L42 36L37 29Z" fill="#824fb7"/>
-   <path d="M43 13L50 10H62L67 15L68 22L72 25L70 34L64 37H50L43 31L40 22Z" fill="#eca86a"/>
-   <path d="M43 12L38 11L32 19V30L35 34H40L45 25V17Z" fill="#935239"/>
-   <path d="M59 25H67L71 28V33L66 37H54L50 32Z" fill="#ffdbad"/>
-   <path d="M66 24H71V28H67L65 26Z" fill="#312436" stroke="none"/>
-   <path d="M56 19H60V24H56Z" fill="#342335" stroke="none"/>
-   <path d="M57 19H59V21H57Z" fill="#fff2d5" stroke="none"/>
-   {barking?<path d="M59 31H69L67 35H61Z" fill="#863c42" strokeWidth="1.5"/>:<path d="M61 31L65 33L68 31" fill="none" strokeWidth="1.5"/>}
-   <path d="M49 35H53V39H49Z" fill="#efc65e" strokeWidth="1"/>
+   <path fill="#d78a46" d="M26 37L33 32 43 31 54 33 60 39 56 46 50 49H36L28 46 24 42Z"/>
+   <path fill="#f3ae63" stroke="none" d="M28 38L34 34H45L49 37 44 41H30L26 40Z"/>
+   <path fill="#f3cea0" stroke="none" d="M37 44H51L53 47 49 49H38Z"/>
+   {sitting&&<path fill="#e69a54" d="M46 43H53L55 50 55 54 53 57H47L44 54Z"/>}
+   <path fill="#773ca3" d="M40 31L46 30 57 36 61 39 57 46 50 45 42 41 36 36Z"/>
+   <path fill="#b967d3" stroke="none" d="M38 35L41 33 48 39 55 42H58L57 44 52 43 44 40Z"/>
+   <path fill="#ffda64" strokeWidth="1.8" d="M55 44H59L62 47V51L59 54H55L52 51V47Z"/>
+   <path fill="#fff1a7" stroke="none" d="M55 47h3v3h-3z"/>
+
+   <g className="dog-head">
+   <path fill="#a45932" d="M65 11L70 8 74 11 76 16 73 22 67 22Z"/>
+   <path fill="#df9452" d="M40 15L46 10 53 8 62 8 70 11 76 17 78 24 82 28 81 33 77 37 68 41 58 41 49 38 43 34 39 28Z"/>
+   <path fill="#f5b269" stroke="none" d="M43 16L50 12 60 11 65 13 61 15 52 15 46 21Z"/>
+   <path fill="#95502e" d="M44 15L37 14 33 16 27 23 23 27 24 33 29 36 35 36 40 33 44 27 46 20Z"/>
+   <path fill="#b86b3d" stroke="none" d="M37 17L42 17 42 20 36 21 29 27 26 28 27 25Z"/>
+
+   {happy?<path d="M52 26L56 22H60L64 26M67 22L70 19H73L76 22" fill="none" strokeWidth="2.5"/>:<>
+   <path fill="#f8e3cf" strokeWidth="2" d="M53 19L57 16H62L67 20 68 26 65 30 60 32H56L52 29 50 24Z"/>
+   <path fill="#f8e3cf" strokeWidth="2" d="M67 16L70 14H73L77 18 78 23 75 27H71L67 24 65 20Z"/>
+   <path fill="#352437" stroke="none" d="M57 19H62L66 22V27L62 31H57L54 28V23ZM70 16H73L76 19V23L74 26H70L68 23V19Z"/>
+   <path fill="#fff7eb" stroke="none" d="M57 21h3v3h-3zm4 5h2v2h-2zm9-8h3v3h-3zm4 4h2v2h-2z"/>
+   </>}
+   <path fill="#6d392a" stroke="none" d="M50 16L54 12 59 11 61 13 57 14 53 17ZM66 12L69 11 73 12 74 14 71 14 68 13Z"/>
+
+   <path fill="#f9d1a2" strokeWidth="1.75" d="M54 31L59 27H67L73 24H77L81 27V31L78 34H73L69 38 63 39 58 37 53 34Z"/>
+   <path fill="#3e2839" stroke="none" d="M73 25H79L81 27 80 30H77L73 28Z"/>
+   {barking
+    ?<path fill="#613145" strokeWidth="1.5" d="M61 33H72L77 36 75 42 69 44 63 41 59 36Z"/>
+    :<path fill="#4a2837" strokeWidth="1.5" d="M60 33L64 35H70L76 32 75 38 71 41H66L62 38Z"/>}
+   <path fill="#ef8392" strokeWidth="1.7" d={barking
+    ?'M66 39L72 38 75 40 75 44 71 46 67 45 65 42Z'
+    :'M67 37L72 35 75 39 76 43 73 46H70L67 43 66 40Z'}/>
+   <path fill="#b8516e" stroke="none" d="M70 38H72L74 42H72Z"/>
+   <path fill="#f6b985" stroke="none" d="M54 31h2v2h-2zm4 1h2v1h-2z"/>
+   </g>
   </g>
+  {(preview||barking)&&<g key={barkKey} className="dog-bark-rays" fill="#ffd46a">
+   <path d="M75 5L77 1H80L79 7 76 10 74 9ZM79 11L83 9 84 12 81 14H79Z"/>
+   {preview&&<path d="M4 23V18L7 15 9 17 7 20V23ZM4 14L7 11 12 10 14 12 10 13 7 16Z" fill="#ffd8a1"/>}
+  </g>}
  </svg>;
 }
 
 const sitAt=7400,resumeAt=10_800,barkAt=8750;
+const reactionMs=1000;
+type DogReaction='bark'|'happy';
+export type DogHeader={head:()=>GroundPoint|undefined;deflect:()=>boolean;cancel:()=>void};
+export type DogBallPartner={preparePass:(fromX:number,flightMs:number)=>DogHeader|undefined};
 const obstacleSelector='.placed-furniture,[data-dog-obstacle]';
 const movementTime=(elapsed:number)=>elapsed-Math.max(0,Math.min(elapsed,resumeAt)-sitAt);
 
-export function Dog({updated,location}:{updated:number;location:Location}){
+export function Dog({updated,location,ballPartner}:{updated:number;location:Location;ballPartner:Ref<DogBallPartner>}){
  const visit=dogVisitAt(updated);
  useEffect(()=>{
+  for(const kind of ['dog-bark','dog-happy'] as const)void prepareRoomSound(kind).catch(()=>{});
   window.addEventListener('pointerdown',unlockSound,{once:true});
   return()=>window.removeEventListener('pointerdown',unlockSound);
  },[]);
  if(location!==visit.location)return null;
- return <DogVisit key={visit.index} elapsed={visit.elapsed} reverse={visit.index%8>=4} location={location}/>;
+ return <DogVisit key={visit.index} elapsed={visit.elapsed} reverse={visit.index%8>=4} location={location} ballPartner={ballPartner}/>;
 }
 
-function DogVisit({elapsed,location,reverse}:{elapsed:number;location:Location;reverse:boolean}){
+function DogVisit({elapsed,location,reverse,ballPartner}:{elapsed:number;location:Location;reverse:boolean;ballPartner:Ref<DogBallPartner>}){
  const button=useRef<HTMLButtonElement>(null);
  const [initialElapsed]=useState(elapsed);
  const [pose,setPose]=useState<'sit'|'run'>(elapsed>=sitAt&&elapsed<resumeAt?'sit':'run');
  const [barking,setBarking]=useState(false);
- const [petted,setPetted]=useState(0);
+ const [reaction,setReaction]=useState<{kind:DogReaction;at:number}|null>(null);
+ const [ballPose,setBallPose]=useState<'ready'|'hit'|null>(null);
  const petTimer=useRef<number|undefined>(undefined);
+ const headerTimer=useRef<number|undefined>(undefined);
+ const pauseUntil=useRef(0);
+ const ballPauseUntil=useRef(0);
+ const visitEnd=useRef(0);
+ const stopVoice=useRef<(()=>void)|undefined>(undefined);
 
- useEffect(()=>()=>window.clearTimeout(petTimer.current),[]);
- function pet(){
-  sound('pet');
-  setPetted(count=>count+1);
+ useEffect(()=>()=>{
   window.clearTimeout(petTimer.current);
-  petTimer.current=window.setTimeout(()=>setPetted(0),1000);
+  window.clearTimeout(headerTimer.current);
+  stopVoice.current?.();
+ },[]);
+ function pet(){
+  const at=performance.now();
+  if(ballPauseUntil.current>at)return;
+  const kind=Math.random()<.5?'bark':'happy';
+  pauseUntil.current=at+reactionMs;
+  setReaction({kind,at});
+  stopVoice.current?.();
+  stopVoice.current=playRoomSound(kind==='bark'?'dog-bark':'dog-happy');
+  window.clearTimeout(petTimer.current);
+  petTimer.current=window.setTimeout(()=>setReaction(null),reactionMs);
  }
+ useImperativeHandle(ballPartner,()=>({
+  preparePass(fromX,flightMs){
+   const dog=button.current,head=dog?.querySelector<SVGGElement>('.dog-head');
+   const now=performance.now(),end=now+flightMs+350;
+   if(location!=='hallway'||!dog||!head||dog.style.visibility!=='visible'||visitEnd.current<end||pauseUntil.current>now||ballPauseUntil.current>now)return;
+   const box=dog.getBoundingClientRect();
+   dog.style.setProperty('--dog-facing',fromX<box.left+box.width/2?'-1':'1');
+   stopVoice.current?.();
+   setBarking(false);
+   ballPauseUntil.current=end;
+   setBallPose('ready');
+   function cancel(){
+    if(ballPauseUntil.current!==end)return;
+    window.clearTimeout(headerTimer.current);
+    ballPauseUntil.current=0;
+    if(dog?.isConnected)setBallPose(null);
+   }
+   return {
+    head:()=>{
+     const matrix=head.getScreenCTM();
+     if(!head.isConnected||!matrix)return;
+     return new DOMPoint(65,13).matrixTransform(matrix);
+    },
+    deflect:()=>{
+     if(!head.isConnected||ballPauseUntil.current!==end)return false;
+     setBallPose('hit');
+     headerTimer.current=window.setTimeout(cancel,300);
+     return true;
+    },
+    cancel,
+   };
+  },
+ }),[location]);
 
  useLayoutEffect(()=>{
   const dog=button.current;
   const room=dog?.closest<HTMLElement>('.photo-room');
   if(!dog||!room)return;
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const start=performance.now()-initialElapsed;
+  let lastFrame=performance.now(),elapsed=initialElapsed;
+  const expires=lastFrame+dogVisitDuration-initialElapsed;
+  visitEnd.current=expires;
   const runTime=movementTime(dogVisitDuration);
   let frame=0,replan=0,routeStart=0,width=0,height=0,signature='';
   let position:GroundPoint|undefined;
@@ -86,7 +176,7 @@ function DogVisit({elapsed,location,reverse}:{elapsed:number;location:Location;r
    const key=JSON.stringify([width,height,feet,objects]);
    if(key===signature)return;
    signature=key;
-   routeStart=position?movementTime(Math.min(dogVisitDuration,performance.now()-start)):0;
+   routeStart=position?movementTime(elapsed):0;
    route=measureDogRoute(dogRoute(location,objects,width,height,feet,reverse,position),width,height);
   }
   function queueMeasure(){
@@ -96,7 +186,8 @@ function DogVisit({elapsed,location,reverse}:{elapsed:number;location:Location;r
 
   function draw(now:number){
    frame=0;
-   const elapsed=Math.min(dogVisitDuration,now-start);
+   elapsed=Math.min(dogVisitDuration,elapsed+Math.max(0,now-Math.max(lastFrame,pauseUntil.current,ballPauseUntil.current)));
+   lastFrame=now;
    const moving=movementTime(elapsed);
    const next=dogPointAt(route,reduced?.5:(moving-routeStart)/Math.max(1,runTime-routeStart));
    if(next){
@@ -109,10 +200,10 @@ function DogVisit({elapsed,location,reverse}:{elapsed:number;location:Location;r
    }else dog!.style.visibility='hidden';
    const nextPose=reduced||(elapsed>=sitAt&&elapsed<resumeAt)?'sit':'run';
    if(nextPose!==lastPose){lastPose=nextPose;setPose(nextPose);}
-   if(!barked&&elapsed>=barkAt){barked=true;playDogBark();}
+   if(!barked&&elapsed>=barkAt){barked=true;stopVoice.current=playRoomSound('dog-bark',true);}
    const currentBark=elapsed>=barkAt&&elapsed<barkAt+700;
    if(currentBark!==showBark){showBark=currentBark;setBarking(currentBark);}
-   if(elapsed<dogVisitDuration)frame=requestAnimationFrame(draw);
+   if(now<expires)frame=requestAnimationFrame(draw);
   }
 
   measure();
@@ -127,8 +218,12 @@ function DogVisit({elapsed,location,reverse}:{elapsed:number;location:Location;r
   return()=>{cancelAnimationFrame(frame);cancelAnimationFrame(replan);resize.disconnect();changes.disconnect();moved.disconnect();};
  },[initialElapsed,location,reverse]);
 
- return <button ref={button} type="button" className="room-dog" aria-label="Погладить собаку" data-pose={pose} data-petted={petted>0||undefined} onClick={pet}>
-  <DogArt sitting={pose==='sit'} barking={barking}/>
-  {petted>0&&<span key={petted} className="dog-heart" aria-hidden="true">♥</span>}
+ return <button ref={button} type="button" className="room-dog" aria-label="Погладить собаку"
+  data-pose={reaction||ballPose?'sit':pose} data-reaction={reaction?.kind} data-ball-pose={ballPose??undefined}
+  onPointerDown={event=>{if(event.isPrimary&&event.button===0)event.currentTarget.setPointerCapture(event.pointerId);}}
+  onClick={pet}>
+  <DogArt sitting={Boolean(reaction||ballPose)||pose==='sit'} barking={reaction?reaction.kind==='bark':!ballPose&&barking}
+   barkKey={reaction?.kind==='bark'?reaction.at:undefined} happy={reaction?.kind==='happy'}/>
+  {reaction?.kind==='happy'&&<span key={reaction.at} className="dog-hearts" aria-hidden="true"><i>♥</i><i>♥</i><i>♥</i></span>}
  </button>;
 }

@@ -1,15 +1,17 @@
+import {decorCatalog} from './decor';
 import {TUTORIAL} from './balance';
-import {advance,blocked,clamp,COOLDOWNS,tutorialReward,type Game} from './game';
+import {advance,blocked,changeStat,COOLDOWNS,tutorialReward,type Game} from './game';
 import {playerLevel} from './economy';
 export const locationIds=['room','bathroom','hallway','hall'] as const;
 export type Location=typeof locationIds[number];
 export const locationLabels:Record<Location,string>={room:'Комната',bathroom:'Ванная',hallway:'Прихожая',hall:'Зал'};
 export function isLocation(value:unknown):value is Location{return locationIds.some(id=>id===value);}
-export const furnitureCatalog=[
- {id:'yoga',name:'Коврик для йоги',price:7500,level:3,location:'hall',x:.24,y:.86,icon:'🧘'},
- {id:'dumbbells',name:'Гантели',price:18000,level:5,location:'hall',x:.78,y:.78,icon:'🏋️'},
- {id:'tray',name:'Лоток для животных',price:35000,level:8,location:'bathroom',x:.29,y:.77,icon:'🐾'},
+export const activityFurniture=[
+ {id:'yoga',name:'Коврик для йоги',price:1800,level:3,location:'hall',x:.24,y:.86,icon:'🧘'},
+ {id:'dumbbells',name:'Гантели',price:3900,level:5,location:'hall',x:.78,y:.78,icon:'🏋️'},
+ {id:'tray',name:'Лоток для животных',price:6200,level:8,location:'bathroom',x:.29,y:.77,icon:'🐾'},
 ] as const;
+export const furnitureCatalog=[...activityFurniture,...decorCatalog] as const;
 export type FurnitureId=typeof furnitureCatalog[number]['id'];
 export type Furniture=Partial<Record<FurnitureId,{x:number;y:number}>>;
 export const activities={
@@ -23,9 +25,8 @@ export const activities={
  tray:{name:'Проверяет лоток',location:'bathroom',minutes:1,energy:0,food:0,hygiene:12,mood:10,fitness:0,minEnergy:0,minFood:0},
 } as const;
 export type ActivityKind=keyof typeof activities;
-export type ToiletVisit='pee'|'poop';
 type TimedActivity=Exclude<ActivityKind,'bath'|'ball'|'yoga'>;
-type ActionSession={id:string;started:number;bonus:boolean;toiletVisit?:ToiletVisit;cleanupLocation?:Location;cleanupDogMessAt?:number};
+type ActionSession={id:string;started:number;bonus:boolean;cleanupLocation?:Location;cleanupDogMessAt?:number};
 export type RoomAction=ActionSession&(
  {kind:TimedActivity;ends:number}
  | {kind:'yoga';ends:number;yogaSeed:number}
@@ -33,7 +34,7 @@ export type RoomAction=ActionSession&(
  | {kind:'ball';ends:null;returns:number}
 );
 export const BATH_READY_AT=680, BATH_STROKE_GAIN=1, BALL_RETURN_GAIN=1;
-export const computerReward={money:200,xp:16} as const;
+export const computerXP=16;
 
 export function activityLocation(action:RoomAction):Location{
  return action.kind==='clean'&&action.cleanupLocation?action.cleanupLocation:activities[action.kind].location;
@@ -65,9 +66,8 @@ export function startActivity(g:Game,kind:ActivityKind,now=Date.now(),location?:
   :kind==='ball'?{...session,kind,ends:null,returns:0}
   :kind==='yoga'?{...session,kind,ends:s.updated+activities.yoga.minutes*60000,yogaSeed:Math.floor(Math.random()*2**32)}
   :{...session,kind,ends:s.updated+activities[kind].minutes*60000,
-   ...(kind==='clean'?{cleanupLocation:location,...(dogMessAt===undefined?{}:{cleanupDogMessAt:dogMessAt})}:{}),
-   ...(kind==='toilet'?{toiletVisit:Math.random()<.5?'pee':'poop'}:{})};
- return {...s,cooldowns,energy:clamp(s.energy-a.energy),food:clamp(s.food-a.food),hygiene:clamp(s.hygiene-a.hygiene),roomAction};
+   ...(kind==='clean'?{cleanupLocation:location,...(dogMessAt===undefined?{}:{cleanupDogMessAt:dogMessAt})}:{})};
+ return {...s,cooldowns,energy:changeStat(s,'energy',-a.energy),food:changeStat(s,'food',-a.food),hygiene:changeStat(s,'hygiene',-a.hygiene),roomAction};
 }
 export function parseRoomAction(raw:unknown,g:Game):RoomAction|null{
  if(!raw||typeof raw!=='object')return null;
@@ -85,6 +85,7 @@ export function parseRoomAction(raw:unknown,g:Game):RoomAction|null{
  }
  if(kind==='clean'&&(!isLocation(action.cleanupLocation)||!canClean(g,action.cleanupLocation,action.cleanupDogMessAt)))return null;
  if(ends!==started+activities[kind].minutes*60000)return null;
+ if(kind==='toilet')return {id,kind,started,ends,bonus};
  if(kind==='yoga'){
   const seed=action.yogaSeed;
   return {...action,kind,ends,yogaSeed:typeof seed==='number'&&Number.isInteger(seed)&&seed>=0&&seed<2**32?seed:started>>>0};
@@ -94,14 +95,14 @@ export function parseRoomAction(raw:unknown,g:Game):RoomAction|null{
 export function scrubBath(g:Game,id:string,now=Date.now()):Game{
  const s=advance(g,now),action=s.roomAction;
  if(s.health===0||action?.kind!=='bath'||action.id!==id||s.updated-action.started<BATH_READY_AT)return s;
- const hygiene=clamp(s.hygiene+BATH_STROKE_GAIN);
+ const hygiene=changeStat(s,'hygiene',BATH_STROKE_GAIN);
  const next={...s,hygiene,cares:s.cares+Number(hygiene>s.hygiene)};
- return hygiene===100&&s.tutorial===TUTORIAL.bath?tutorialReward(next,TUTORIAL.bath):next;
+ return hygiene>=100&&s.tutorial===TUTORIAL.bath?tutorialReward(next,TUTORIAL.bath):next;
 }
 export function returnBall(g:Game,id:string,now=Date.now()):Game{
  const s=advance(g,now),action=s.roomAction;
  if(s.health===0||action?.kind!=='ball'||action.id!==id)return s;
- const mood=clamp(s.mood+BALL_RETURN_GAIN);
+ const mood=changeStat(s,'mood',BALL_RETURN_GAIN);
  return {...s,mood,roomAction:{...action,returns:action.returns+1},cares:s.cares+Number(mood>s.mood)};
 }
 export function finishActivity(g:Game):Game{
@@ -115,8 +116,8 @@ export function finishActivity(g:Game):Game{
  }
  const toilet=action.kind==='toilet'||action.kind==='tray';
  const day=gameDate(action.ends),count=g.training.day===day?g.training.count:0;
- let s:Game={...g,roomAction:null,cares:g.cares+1,mood:clamp(g.mood+(action.bonus?a.mood:0)),toiletBonusAt:toilet&&action.bonus?action.ends+90*60000:g.toiletBonusAt};
- if(action.kind==='computer')s.economy={balance:g.economy.balance+computerReward.money,xp:g.economy.xp+computerReward.xp};
+ let s:Game={...g,roomAction:null,cares:g.cares+1,mood:changeStat(g,'mood',(action.bonus?a.mood:0)),toiletBonusAt:toilet&&action.bonus?action.ends+90*60000:g.toiletBonusAt};
+ if(action.kind==='computer')s.economy={...g.economy,xp:g.economy.xp+computerXP};
  if(a.fitness)s={...s,fitnessXP:Math.max(g.fitnessXP,Math.min(100,g.fitnessXP+a.fitness*(count<3?1:.5))),training:{day,count:count+1}};
  return s;
 }
@@ -125,15 +126,15 @@ export function buyFurniture(g:Game,id:FurnitureId):Game{
  if(!item||g.health===0||g.tutorial<TUTORIAL.done||g.furniture[id]||g.economy.balance<item.price||playerLevel(g.economy.xp)<item.level||(id==='tray'&&!g.dog))return g;
  return {...g,economy:{...g.economy,balance:g.economy.balance-item.price},furniture:{...g.furniture,[id]:{x:item.x,y:item.y}},furnitureCosts:{...g.furnitureCosts,[id]:item.price}};
 }
-const furnitureBounds:Record<FurnitureId,[number,number,number,number]>={
+const furnitureBounds:Record<typeof activityFurniture[number]['id'],[number,number,number,number]>={
  yoga:[.2,.30,.82,.90], dumbbells:[.72,.84,.74,.80], tray:[.26,.34,.73,.80],
 };
 export function placement(id:FurnitureId,x:number,y:number){
- const [minX,maxX,minY,maxY]=furnitureBounds[id];
+ const [minX,maxX,minY,maxY]=decorCatalog.find(item=>item.id===id)?.bounds??furnitureBounds[id as keyof typeof furnitureBounds];
  return {x:Math.max(minX,Math.min(maxX,x)),y:Math.max(minY,Math.min(maxY,y))};
 }
 export function moveFurniture(g:Game,id:FurnitureId,x:number,y:number):Game{
- if(!g.furniture[id]||g.health===0||g.roomAction||!Number.isFinite(x)||!Number.isFinite(y))return g;
+ if(!g.furniture[id]||g.health===0||g.roomAction||g.restUntil!==null||g.sleepUntil!==null||!Number.isFinite(x)||!Number.isFinite(y))return g;
  return {...g,furniture:{...g.furniture,[id]:placement(id,x,y)}};
 }
 export function parseFurniture(raw:unknown):Furniture{
