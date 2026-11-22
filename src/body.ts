@@ -9,6 +9,28 @@ export function bodyPart(x:number,y:number):Hit|null {
  if(y<.69)return 'belly';
  return 'legs';
 }
+
+type Point={x:number;y:number};
+export type HeadStroke={start:Point;direction:Point|null;finishingReturn?:boolean};
+export function advanceHeadStroke(stroke:HeadStroke,point:Point,minTravel:number){
+ const dx=point.x-stroke.start.x,dy=point.y-stroke.start.y;
+ const direction=stroke.direction;
+ const travel=direction?dx*direction.x+dy*direction.y:0;
+ if(direction&&!stroke.finishingReturn){
+  if(travel>minTravel*.25)return false;
+  stroke.finishingReturn=true;
+  return true;
+ }
+ // Let the same return settle at its farthest point before counting a new stroke.
+ if(direction&&travel<0){stroke.start=point;return false;}
+ const distance=Math.hypot(dx,dy);
+ if(distance>=minTravel){
+  stroke.direction={x:dx/distance,y:dy/distance};
+  stroke.finishingReturn=false;
+ }
+ return false;
+}
+
 export const reactions:Record<Hit,{cell:number;text:string}>={
  head:{cell:0,text:'Ой! По голове не надо!'},belly:{cell:1,text:'Уф! Щекотно… и неожиданно!'},legs:{cell:2,text:'Ой-ой! Осторожнее!'},
  'right-foot':{cell:3,text:'Правую ступню убрал!'},'left-foot':{cell:4,text:'Левую ступню убрал!'},

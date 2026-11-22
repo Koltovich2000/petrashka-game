@@ -5,6 +5,7 @@ import {BallScene} from './BallScene';
 import {YogaScene} from './YogaScene';
 import {SleepScene} from './SleepScene';
 import {Dog,type DogBallPartner} from './Dog';
+import type {DogMess} from './dogSchedule';
 import {FoodPicture} from './FoodTray';
 import type {FoodId} from './balance';
 import {HallWindow,RoomWindow} from './RoomWindow';
@@ -18,13 +19,28 @@ import { useEffect, useLayoutEffect, useRef, useState, type AnimationEvent, type
 import { PixelAvatar } from './PixelAvatar';
 import type { Outfit } from './wardrobe';
 import {hairWetness} from './hair';
-import { bodyPart, reactions, type Hit } from './body';
+import { advanceHeadStroke, bodyPart, reactions, type HeadStroke, type Hit } from './body';
 import { sound, unlockSound, muteSound, isSoundMuted } from './sound';
 import {playHitSound,prepareHitSound,stopHitSound} from './hitSound';
 import {playRoomSound,prepareRoomSound} from './roomSoundEffects';
 import { haptic } from './telegram';
 import './room-scenes.css';
-const messPosition=.71;
+const floorMessSlots=[
+ {x:.90,row:0},{x:.10,row:0},{x:.795,row:0},{x:.205,row:0},
+ {x:.90,row:1},{x:.10,row:1},{x:.795,row:1},{x:.205,row:1},
+];
+function placeFloorMesses(playerMess:boolean,dogMesses:DogMess[],width:number,height:number){
+ const remaining=[...floorMessSlots];
+ const size=Math.round(Math.min(34,Math.max(21,width*.09)));
+ const front=Math.max(45,height*.1);
+ const rowGap=clamp(height*.08,20,size+5);
+ const items=[...(playerMess?[null]:[]),...dogMesses];
+ return items.map(mess=>{
+  const preferred=mess&&remaining.findIndex(slot=>(slot.x<.5)===(mess.x<.5));
+  const [slot]=remaining.splice(Math.max(0,preferred??0),1);
+  return {mess,x:slot.x,bottom:front+slot.row*rowGap,size};
+ });
+}
 const doorWalkMs=620;
 const sleepWalkMs=740;
 const toiletWalkMs=1500;
@@ -50,6 +66,8 @@ export function Room(p:Props){
  const {location}=p;
  const stage=useRef<HTMLElement>(null);const actor=useRef<HTMLDivElement>(null);const m=useRef(resting());const [motion,setMotion]=useState(resting);
  const dogBallPartner=useRef<DogBallPartner>(null);
+ const floorMesses=useRef<HTMLDivElement>(null);
+ const [roomSize,setRoomSize]=useState({width:0,height:0});
  const [muted,setMuted]=useState(isSoundMuted);const [hitCount,setHitCount]=useState(0);
  const [hit,setHit]=useState<Hit>('head');
  const [bathArrived,setBathArrived]=useState<string|null>(null);
@@ -58,7 +76,7 @@ export function Room(p:Props){
  const [sleepWalking,setSleepWalking]=useState(false);
  const wasSleeping=useRef(p.sleeping);
  const props=useRef(p);props.current=p;
- const target=useRef({x:0,y:0});const pointer=useRef<{id:number;startX:number;startY:number;offsetX:number;offsetY:number;dragged:boolean;headTravel:number;movedOnHead?:boolean;lastHeadPoint:{x:number;y:number}|null;part:Hit}|null>(null);
+ const target=useRef({x:0,y:0});const pointer=useRef<{id:number;startX:number;startY:number;offsetX:number;offsetY:number;dragged:boolean;headStroke:HeadStroke|null;movedOnHead?:boolean;part:Hit}|null>(null);
  const hold=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);const raf=useRef(0);
  function bounds(){const r=stage.current!.getBoundingClientRect();const size=actor.current!.offsetWidth;return {limit:Math.max(0,(r.width-size)/2),top:-Math.max(0,r.height-size-110),r};}
  function reset(){clearTimeout(hold.current);pointer.current=null;m.current=resting();target.current={x:0,y:0};setMotion({...m.current});props.current.onBusy(false);}
@@ -91,7 +109,8 @@ export function Room(p:Props){
   if(!part)return;
   prepareHitSound();
   e.currentTarget.setPointerCapture(e.pointerId);
-  pointer.current={part,id:e.pointerId,startX:e.clientX,startY:e.clientY,offsetX:m.current.x-e.clientX,offsetY:m.current.y-e.clientY,dragged:false,headTravel:0,lastHeadPoint:{x:e.clientX,y:e.clientY}};
+  pointer.current={part,id:e.pointerId,startX:e.clientX,startY:e.clientY,offsetX:m.current.x-e.clientX,offsetY:m.current.y-e.clientY,
+   dragged:false,headStroke:part==='head'?{start:{x:e.clientX,y:e.clientY},direction:null}:null};
   target.current={x:m.current.x,y:m.current.y};
   if(part!=='head'&&!p.careMode)hold.current=setTimeout(begin,300);
  }
@@ -100,11 +119,10 @@ export function Room(p:Props){
   if(!ptr||ptr.id!==e.pointerId)return;
   if(ptr.part==='head'){
    if(Math.hypot(e.clientX-ptr.startX,e.clientY-ptr.startY)>6)ptr.movedOnHead=true;
-   if(characterPart(e)!=='head'){ptr.lastHeadPoint=null;ptr.headTravel=0;return;}
-   if(ptr.lastHeadPoint)ptr.headTravel+=Math.hypot(e.clientX-ptr.lastHeadPoint.x,e.clientY-ptr.lastHeadPoint.y);
-   ptr.lastHeadPoint={x:e.clientX,y:e.clientY};
-   if(ptr.headTravel>=24&&p.canPet&&!p.careMode){
-    ptr.headTravel=0;
+   if(characterPart(e)!=='head'||!p.canPet||p.careMode){ptr.headStroke=null;return;}
+   const point={x:e.clientX,y:e.clientY};
+   ptr.headStroke??={start:point,direction:null};
+   if(advanceHeadStroke(ptr.headStroke,point,clamp(e.currentTarget.clientWidth*.1,12,24))){
     if(m.current.phase==='reacting'){m.current=resting();setMotion({...m.current});p.onBusy(false);}
     p.onCare('pet');
    }
@@ -147,7 +165,10 @@ export function Room(p:Props){
    raf.current=requestAnimationFrame(frame);
   };raf.current=requestAnimationFrame(frame);
   const cancel=()=>reset();window.addEventListener('blur',cancel);const visibility=()=>{if(document.hidden)reset();};document.addEventListener('visibilitychange',visibility);
-  const resize=new ResizeObserver(()=>{if(m.current.phase!=='idle')reset();});if(stage.current)resize.observe(stage.current);
+  const resize=new ResizeObserver(()=>{
+   if(m.current.phase!=='idle')reset();
+   if(stage.current)setRoomSize({width:stage.current.clientWidth,height:stage.current.clientHeight});
+  });if(stage.current)resize.observe(stage.current);
   return()=>{cancelAnimationFrame(raf.current);clearTimeout(hold.current);window.removeEventListener('blur',cancel);document.removeEventListener('visibilitychange',visibility);resize.disconnect();};
  },[]);
  const motionPhase=useRef<Phase>('idle');
@@ -219,7 +240,10 @@ export function Room(p:Props){
  const scrubbing=cleaning&&!approaching;
  const cleanupReason=activityReason(p.game,'clean',location);
  const dogMesses=(p.game.dogCare?.messes??[]).filter(mess=>mess.location===location);
- const dogMessTarget=cleaning?dogMesses.find(mess=>mess.at===activeAction?.cleanupDogMessAt):undefined;
+ const hasMesses=Boolean(p.game.floorMess[location]||dogMesses.length);
+ const messPositions=placeFloorMesses(Boolean(p.game.floorMess[location]),dogMesses,roomSize.width,roomSize.height);
+ const cleanupPoint=cleaning?messPositions.find(point=>point.mess?.at===activeAction?.cleanupDogMessAt):undefined;
+ const cleanFacing=cleanupPoint&&cleanupPoint.x<.5?-1:1;
  const objectPoint=actionKind&&actionKind!=='yoga'&&p.game.furniture[actionKind as FurnitureId];
  const roomWidth=stage.current?.clientWidth??0;
  const roomHeight=stage.current?.clientHeight??0;
@@ -227,10 +251,10 @@ export function Room(p:Props){
  // Leave room for the raised right boot and the ball when stepping toward the left edge.
  const ballX=roomWidth?Math.max(.30,((actor.current?.clientWidth??0)*.36+ballStep+43)/roomWidth):.30;
  const activityX=objectPoint?objectPoint.x:actionKind==='computer'?.76:actionKind==='ball'?ballX:p.sleeping?.23:.5;
- const activityY=dogMessTarget?roomHeight*(dogMessTarget.y-1)+49:
+ const activityY=cleanupPoint?49-cleanupPoint.bottom:
   roomHeight*(objectPoint?objectPoint.y-.90:actionKind==='computer'?-.08:p.sleeping?-.12:0);
- const activityOffset=cleaning
-  ?roomWidth*((dogMessTarget?.x??messPosition)-.5)-(actor.current?.clientWidth??0)*.28
+ const activityOffset=cleanupPoint
+  ?roomWidth*(cleanupPoint.x-.5)-cleanFacing*(actor.current?.clientWidth??0)*.28
   :roomWidth*(activityX-.5);
  const walkStyle=sceneWalking?{
   '--walk-x':`${dumbbellPhase==='approach'?activityOffset:roomWidth*(sleepWalking?-.28:doorWalking?.365:.21)}px`,
@@ -247,6 +271,28 @@ export function Room(p:Props){
   '--toilet-lift-duration':`${toiletUseAt-toiletWalkMs}ms`,'--toilet-lift-delay':`${-Math.max(0,toiletElapsed-toiletWalkMs)}ms`,
  } as CSSProperties:walkStyle;
  const busy=motion.phase!=='idle';
+ const trackMessOverlap=busy||sceneWalking||Boolean(activeAction);
+ const messIds=dogMesses.map(mess=>mess.at).join(',');
+ useLayoutEffect(()=>{
+  const layer=floorMesses.current,mascot=actor.current?.querySelector('.mascot');
+  if(!p.active||!hasMesses||!layer||!mascot)return;
+  let frame=0;
+  function update(){
+   const body=mascot!.getBoundingClientRect();
+   const bodyInset=body.width*.18;
+   const visible=getComputedStyle(mascot!).visibility==='visible';
+   const covered=Array.from(layer!.querySelectorAll('button'),button=>{
+    const mark=button.getBoundingClientRect();
+    return {button,hide:visible&&!button.classList.contains('scrubbing')&&
+     mark.right+10>body.left+bodyInset&&mark.left-10<body.right-bodyInset&&
+     mark.bottom+10>body.top&&mark.top-10<body.bottom};
+   });
+   for(const {button,hide} of covered)button.toggleAttribute('data-covered',hide);
+   if(trackMessOverlap)frame=requestAnimationFrame(update);
+  }
+  update();
+  return()=>cancelAnimationFrame(frame);
+ },[p.active,location,hasMesses,p.game.floorMess[location],messIds,roomSize,trackMessOverlap,asleep]);
  const eatingFood=!busy&&!activeAction&&!p.sleeping&&p.state!=='faint'?p.eatenFood:null;
  const avatarPose=sceneWalking||approaching?'walking':toiletPhase==='open'?'idle':dumbbellPhase==='reach'?'dumbbell-reach':dumbbellPhase==='stand'?'dumbbell-stand':eatingFood?'eating':actionKind??motion.phase;
  function stepSound(event:AnimationEvent<HTMLElement>){
@@ -280,22 +326,19 @@ export function Room(p:Props){
  </div>}
  <button className="sound-toggle" aria-label={muted?'Включить звук':'Выключить звук'} onClick={()=>{setMuted(!muted);muteSound(!muted);if(!muted)stopHitSound();else unlockSound();}}>{muted?'🔇':'🔊'}</button>
  {p.statHud}
- {p.game.floorMess[location]&&<button type="button" className={`floor-mess${scrubbing&&!dogMessTarget?' scrubbing':''}`}
-  style={{left:`${messPosition*100}%`}} aria-label="Убрать какашки с пола" title={cleanupReason||'Убрать какашки с пола'}
-  disabled={busy||Boolean(cleanupReason)} onClick={()=>p.onActivity('clean')}>
-  <PixelPoop/>{scrubbing&&!dogMessTarget&&<><i/><i/></>}
- </button>}
- {dogMesses.map(mess=>{
-  const reason=activityReason(p.game,'clean',location,mess.at);
-  const isScrubbing=scrubbing&&dogMessTarget?.at===mess.at;
-  return <button key={mess.at} type="button" className={`floor-mess dog-mess${isScrubbing?' scrubbing':''}`}
-   style={{left:`${mess.x*100}%`,top:`${mess.y*100}%`}} aria-label={mess.kind==='pee'?'Вытереть лужу за собакой':'Убрать кучку за собакой'} title={reason||'Убрать за собакой'}
-   disabled={busy||Boolean(reason)} onClick={()=>p.onActivity('clean',mess.at)}>
-   {mess.kind==='pee'?<PixelPuddle/>:<PixelPoop/>}{isScrubbing&&<><i/><i/></>}
+ {hasMesses&&<div ref={floorMesses} className="floor-messes">{messPositions.map(point=>{
+  const {mess,x,bottom,size}=point;
+  const reason=mess?activityReason(p.game,'clean',location,mess.at):cleanupReason;
+  const label=mess?.kind==='pee'?'Вытереть лужу за собакой':mess?'Убрать кучку за собакой':'Убрать какашки с пола';
+  const isScrubbing=scrubbing&&cleanupPoint===point;
+  return <button key={mess?.at??'player'} type="button" className={`floor-mess${mess?' dog-mess':''}${isScrubbing?' scrubbing':''}`}
+   style={{left:`${x*100}%`,bottom,width:size,height:size}} aria-label={label} title={reason||label}
+   disabled={busy||Boolean(reason)} onClick={()=>p.onActivity('clean',mess?.at)}>
+   {mess?.kind==='pee'?<PixelPuddle/>:<PixelPoop/>}{isScrubbing&&<><i/><i/></>}
   </button>;
- })}
+ })}</div>}
  <div className="floor-shadow" aria-hidden="true" style={{transform:toiletOnFloor?undefined:`translate(calc(-50% + ${motion.x+(actionKind==='ball'||actionKind==='dumbbells'?activityOffset:0)}px),${actionKind==='dumbbells'?activityY:0}px) scale(${Math.max(.45,1+motion.y/400)})`,opacity:Math.max(.15,.55+motion.y/500)}}/>
- <div ref={actor} className={'actor-position motion-'+motion.phase+(actionKind?' activity-'+actionKind:'')+(p.sleeping?' activity-sleep':'')+(p.state==='faint'?' is-dead':'')} style={{'--x':`${motion.x+activityOffset}px`,'--y':`${motion.y+activityY}px`,'--tilt':`${motion.tilt}deg`,'--direction':motion.direction,'--hit-x':`${(reactions[hit].cell%3)*50}%`,'--hit-y':`${Math.floor(reactions[hit].cell/3)*50}%`} as CSSProperties}>
+ <div ref={actor} className={'actor-position motion-'+motion.phase+(actionKind?' activity-'+actionKind:'')+(p.sleeping?' activity-sleep':'')+(p.state==='faint'?' is-dead':'')} style={{'--x':`${motion.x+activityOffset}px`,'--y':`${motion.y+activityY}px`,'--tilt':`${motion.tilt}deg`,'--direction':motion.direction,'--clean-facing':cleanFacing,'--hit-x':`${(reactions[hit].cell%3)*50}%`,'--hit-y':`${Math.floor(reactions[hit].cell/3)*50}%`} as CSSProperties}>
  {showActivity&&!bathAction&&!toiletPhase&&<div className={`actor-activity${training?' training-cancel':''}`}>
   {!training&&<><strong>{statusLabel}</strong>
   {activeAction?.kind==='ball'
@@ -304,7 +347,7 @@ export function Room(p:Props){
   <button type="button" className="cancel-activity" onClick={p.onCancelActivity}>{activeAction?.kind==='ball'?'Закончить':'Отменить'}</button>
  </div>}
  {p.state!=='faint'&&!showActivity&&!sceneWalking&&!asleep&&(busy||['hungry','sick','dirty','tired','sad'].includes(p.state)||p.speech!==p.status)&&<div className="speech" aria-live="polite">{phaseText}</div>}
- <button disabled={p.state==='faint'} className={`mascot ${p.state} ${busy?'':p.effect}`} aria-label="Петрашка: проведите по голове, чтобы погладить, или потяните за туловище, чтобы поднять" onPointerDown={down} onPointerMove={move} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(e.detail===0&&!busy&&p.canPet&&!p.careMode)p.onCare('pet');}}>
+ <button disabled={p.state==='faint'} className={`mascot ${p.state} ${busy?'':p.effect}`} aria-label="Петрашка: проведите по голове туда и обратно, чтобы погладить, или потяните за туловище, чтобы поднять" onPointerDown={down} onPointerMove={move} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(e.detail===0&&!busy&&p.canPet&&!p.careMode)p.onCare('pet');}}>
  <span key={dumbbellPhase??(p.effect==='pet'?`pet-${p.game.cares}`:hitCount)} className="layered-character" role="img" aria-label={`Петрашка: ${busy?phaseText:p.status}`}>
   {toiletPhase==='use'?<ToiletRearAvatar outfit={p.outfit} wetness={wetness}/>
    :<PixelAvatar outfit={p.outfit} state={actionKind==='ball'||sleepWalking||eatingFood?'happy':p.state} pose={avatarPose} hit={hit} hygiene={p.hygiene} wetness={wetness}/>}

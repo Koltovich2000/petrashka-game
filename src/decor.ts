@@ -5,7 +5,7 @@ export const decorCatalog=[
  {id:'entryShelf',art:'bookshelf',name:'Полка с книгами для прихожей',location:'hallway',price:1000,level:2,x:.22,y:.22,width:18,bounds:[.16,.27,.19,.25],floor:false},
  {id:'entryPlant',art:'plant',name:'Растение для прихожей',location:'hallway',price:850,level:2,x:.71,y:.62,width:13,bounds:[.65,.76,.58,.68],floor:true},
  {id:'entrySofa',art:'sofa',name:'Диван для прихожей',location:'hallway',price:2400,level:2,x:.19,y:.69,width:34,bounds:[.18,.27,.65,.76],floor:true},
- {id:'entryKitchen',art:'kitchen',name:'Кухонный гарнитур с холодильником',location:'hallway',price:4200,level:2,x:.56,y:.55,width:47,bounds:[.49,.6,.51,.58],floor:true},
+ {id:'entryKitchen',art:'kitchen',name:'Кухонный гарнитур с холодильником',location:'hallway',price:3500,level:2,x:.56,y:.55,width:47,bounds:[.49,.6,.51,.58],floor:true},
  {id:'hallLamp',art:'lamp',name:'Торшер для зала',location:'hall',price:1150,level:2,x:.14,y:.61,width:13,bounds:[.11,.22,.52,.65],floor:true},
  {id:'hallSofa',art:'sofa',name:'Диван для зала',location:'hall',price:2600,level:2,x:.18,y:.71,width:33,bounds:[.17,.23,.69,.76],floor:true},
  {id:'hallBookcase',art:'bookshelf',name:'Стеллаж с книгами',location:'hall',price:1750,level:2,x:.85,y:.57,width:21,bounds:[.79,.88,.53,.62],floor:true},

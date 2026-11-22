@@ -40,21 +40,21 @@ export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_
  let database;
  let loggedFirstSave=false;
  const getStore=()=>database??=openGameStore(databasePath,databaseUrl).catch(error=>{database=undefined;throw error;});
- const worldState=async(store,snapshot,playerId,admin=false)=>({
+ const worldState=snapshot=>({
   now:snapshot.now,paused:snapshot.pauses.at(-1)?.end===null,
-  poll:await store.world.poll(snapshot.now,playerId,admin),
+  poll:snapshot.poll,
  });
  const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
  return {
   async world(adminId){
    const store=await getStore();
-   return worldState(store,await store.world.snapshot(clock),adminId,true);
+   return worldState(await store.world.snapshot(clock,adminId,true));
   },
   async changeWorld(adminId,command){
    const store=await getStore();
    if(command.kind==='pause')await store.world.setPause(command.paused,clock);
    else if(!await store.world.createPoll(command,clock))throw conflict('poll_already_running');
-   return worldState(store,await store.world.snapshot(clock),adminId,true);
+   return worldState(await store.world.snapshot(clock,adminId,true));
   },
   async logStorage(){
    const source=databaseUrl?'PostgreSQL':`SQLite ${resolve(databasePath)}`;
@@ -157,7 +157,7 @@ export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_
      }
      if(!await store.world.vote(id,command.pollId,command.choice,clock))return json(res,409,{error:'poll_closed'});
     }
-    const snapshot=await store.world.snapshot(clock);
+    const snapshot=await store.world.snapshot(clock,id);
     const {now:at,pauses}=snapshot;
     const gameAt=gameTime(at,pauses);
     const paused=pauses.at(-1)?.end===null;
@@ -183,7 +183,7 @@ export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_
      loggedFirstSave=true;
      console.info('Game progress saved: first successful player write since startup');
     }
-    return json(res,200,{state,needsCharacterName,world:await worldState(store,snapshot,id)});
+    return json(res,200,{state,needsCharacterName,world:worldState(snapshot)});
    }catch(error){
     if(error.code==='character_name_taken')return json(res,409,{error:error.code});
     console.error('Game state transaction failed',error);

@@ -12,7 +12,7 @@ export function AdminWorld({world,busy,submit,refresh}:Props){
  const [minutes,setMinutes]=useState('10');
  const draftId=useRef<{key:string;id:string}|undefined>(undefined);
  const poll=world?.poll;
- const active=Boolean(poll&&poll.endsAt>now);
+ const active=Boolean(world&&poll&&poll.endsAt>world.now);
  useEffect(()=>{
   if(!active)return;
   const timer=window.setInterval(refresh,5000);

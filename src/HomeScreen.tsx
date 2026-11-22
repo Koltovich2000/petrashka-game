@@ -120,6 +120,8 @@ export function HomeScreen({location,onLocationChange,active,game,outfit,effect,
     {dogFood?`Дать корм · ${dogFood} порц.`:'Корм в магазине'}
    </button>
   </section>}
+  {dogFoodLevel===0&&<p className="dog-care-panel" role="status">Собака голодна. Покорми её, пока её не забрали в приют.</p>}
+  {!game.dog&&game.dogCare?.hungerShelterAt!==undefined&&<p className="dog-care-panel" role="status">Собаку забрали в приют. Вернуть её можно в магазине.</p>}
   {!game.dog&&game.dogCare?.diedAt!=null&&<p className="dog-care-panel" role="status">Собака умерла от голода. В магазине можно приютить нового питомца.</p>}
   <section className="quick-care" aria-label="Действия">
    <div className="quick-actions">

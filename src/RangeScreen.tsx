@@ -6,17 +6,18 @@ import {getSoundContext,isSoundMuted,prepareRangeShot,playRangeShot} from './sou
 import {useRangeMotion} from './useRangeMotion';
 import {limit} from './rangePhysics';
 import {anchorRangeMark,RANGE_BALANCE,freshRange,regrowPart,hitRange,rangePart,type RangePart,type Source} from './rangeDamage';
-import {floorFraction,floorReserve,resolveContacts,wallInset,type BodyBox,type Contact} from './rangeContacts';
+import {floorFraction,floorReserve,rangeFloor,resolveContacts,wallInset,type BodyBox,type Contact} from './rangeContacts';
 import {useRangePieces} from './useRangePieces';
 import {useRangeTraps} from './useRangeTraps';
 import {playBatImpact,playImpactRecording,playSawCloth,playTrapRecording,preloadTrapRecordings} from './rangeTrapSound';
 import {makeRangeBurst,RangeBursts,RangeTrapActors,RangeTrapPanel,type RangeBurstEffect} from './RangeTrapEffects';
+import {poopFlightTime,RangePoopProjectile,RangePoopSplat,type PoopThrow} from './RangePoopEffects';
 import type {Outfit} from './wardrobe';
 import type {HairWetness} from './hair';
 import './range.css';
 
 type Weapon='pistol'|'bat'|'hand';
-type DamageType='hole'|'bruise'|'tear'|'scratch';
+type DamageType='hole'|'bruise'|'tear'|'scratch'|'splat';
 type Damage={
  id:number;
  type:DamageType;
@@ -31,7 +32,8 @@ type Damage={
 };
 type Target=Pick<Damage,'bodyPart'|'layer'|'x'|'y'>&{clientX?:number;clientY?:number;aimX?:number;aimY?:number};
 
-const weapons=[{id:'pistol',name:'Пистолет',action:'Выстрелить'},{id:'bat',name:'Бита',action:'Ударить битой'},{id:'hand',name:'Рука',action:'Подбросить'}] as const;
+const weapons=[{id:'pistol',name:'Пистолет',action:'Выстрелить'},{id:'bat',name:'Бита',action:'Ударить битой'},{id:'hand',name:'Рука',action:'Подбросить'},{id:'poop',name:'Говно',action:'Бросить говно'}] as const;
+const poopWeaponIndex=weapons.findIndex(weapon=>weapon.id==='poop');
 const timedTrapRecordings={saw:'saw-motor',fan:'fan',weight:'weight-fall'} as const;
 type TimedTrap=keyof typeof timedTrapRecordings;
 const timedTraps=Object.keys(timedTrapRecordings) as TimedTrap[];
@@ -74,6 +76,12 @@ function WeaponArt({weapon,firing=false}:{weapon:Weapon;firing?:boolean}){
 
 function DamageMark({damage}:{damage:Damage}){
  const {x,y, type,id}=damage;
+ if(type==='splat'){
+  const scale=damage.strength??1;
+  const bottom=anchorRangeMark(damage.layer,x,y+7*scale);
+  return <RangePoopSplat id={id} x={x} y={y} scale={scale}
+   slide={{x:(bottom.x-x)/scale,y:Math.max(1.6,bottom.y-y)/scale}}/>;
+ }
  return <g transform={`translate(${x} ${y}) scale(${damage.strength??1})`} data-damage-id={id} data-damage-type={type} data-trap-damage={damage.trap||undefined} pointerEvents="none" strokeWidth=".7">
   {type==='hole'?<>
    <path d="m-4-2 2-.4-.3-2 2.2 1.2 2-1.2.2 2 2.1.7-1.1 1.7 1 2.1-2 .25-.5 1.5-1.8-1.1-2.2.75.3-2-2-1Z" fill="#222037" stroke="#f0bd92"/>
@@ -114,14 +122,17 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
  const [emotion,setEmotion]=useState('scared');
  const emotionAt=useRef(-Infinity);
  const [damages,setDamages]=useState<Damage[]>([]);
+ const [poopThrows,setPoopThrows]=useState<PoopThrow[]>([]);
  const [swing,setSwing]=useState<{id:number;target:Target}|null>(null);
  const actor=useRef<HTMLDivElement>(null);
+ const rig=useRef<HTMLDivElement>(null);
  const stage=useRef<HTMLDivElement>(null);
  const impactAt=useRef(0);
  const surfaceTouchAt=useRef(-Infinity);
  const [surfaceTouch,setSurfaceTouch]=useState<(Pick<Contact,'side'|'x'|'y'>&{id:number})|null>(null);
  const [bursts,setBursts]=useState<RangeBurstEffect[]>([]);
  const cameraShake=useRef<Animation|null>(null);
+ const dodgeAnimation=useRef<Animation|null>(null);
  const surfaces=useRef<Partial<Record<AvatarLayer,SVGGElement>>>({});
  function surface(layer:AvatarLayer){
   const cached=surfaces.current[layer];
@@ -220,6 +231,7 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
 
    document.removeEventListener('visibilitychange',removeExpired);
    cameraShake.current?.cancel();
+   dodgeAnimation.current?.cancel();
    timedTraps.forEach(stopTrapSound);
    output.current?.disconnect();
    output.current=null;
@@ -299,7 +311,9 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   timers.current.forEach(t=>window.clearTimeout(t));timers.current.clear();
   collapsing.current=false;replacementQueued.current=false;setFading(false);setGrowing([]);setSpawning(true);
   ledger.current=freshRange();setHealth(ledger.current);setDamages([]);setSwing(null);setReaction(null);setBursts([]);setSurfaceTouch(null);
+  setPoopThrows([]);
   cameraShake.current?.cancel();
+  dodgeAnimation.current?.cancel();
   fragments.reset();physics.reset();setEmotion('scared');emotionAt.current=-Infinity;impactAt.current=0;
   after(()=>setSpawning(false),550);
  }
@@ -319,8 +333,44 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   if(reactionTimer.current!==undefined){window.clearTimeout(reactionTimer.current);timers.current.delete(reactionTimer.current);}
   reactionTimer.current=after(()=>{reactionTimer.current=undefined;setReaction(null);},360);
  }
+ function throwPoop(target:Target){
+  const arena=stage.current;
+  if(!arena||collapsing.current)return;
+  const anchor=anchorRangeMark(target.layer,target.x,target.y);
+  function follow(){
+   if(ledger.current.detached.has(rangePart(target.layer)))return;
+   const matrix=surface(target.layer)?.getScreenCTM();
+   if(!matrix||!arena)return;
+   const {x,y}=new DOMPoint(anchor.x,anchor.y).matrixTransform(matrix);
+   const bounds=arena.getBoundingClientRect();
+   return {x:x-bounds.left-arena.clientLeft,y:y-bounds.top-arena.clientTop};
+  }
+  const aim=follow();
+  if(!aim)return;
+  const id=++sequence.current,miss=Math.random()>=.7;
+  const width=arena.clientWidth,height=arena.clientHeight;
+  const side=aim.x<width*.68?-1:1;
+  const from={x:width*(side<0?.92:.08),y:rangeFloor(height)-13};
+  if(miss)after(()=>{
+   if(!rig.current||collapsing.current)return;
+   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+   const lean=side*(reduced?14:28),angle=side*(reduced?7:17);
+   dodgeAnimation.current?.cancel();
+   dodgeAnimation.current=rig.current.animate([
+    {translate:'0px 0px',rotate:'0deg',offset:0},
+    {translate:`${lean}px 10px`,rotate:`${angle}deg`,offset:.24},
+    {translate:`${lean}px 10px`,rotate:`${angle}deg`,offset:.64},
+    {translate:'0px 0px',rotate:'0deg',offset:1},
+   ],{duration:480,easing:'ease-in-out'});
+  },poopFlightTime*.43);
+  setPoopThrows(current=>[...current,{id,from,aim,arc:limit(Math.abs(aim.x-from.x)*.22,26,78),miss,follow,finish:()=>{
+   setPoopThrows(shots=>shots.filter(shot=>shot.id!==id));
+   if(!miss&&!collapsing.current&&follow())addDamage(target,'splat',1,false,false);
+  }}]);
+ }
  function attack(target:Target){
   if(weapon.id==='hand')return;
+  if(weapon.id==='poop'){throwPoop(target);return;}
   const id=++sequence.current,kind=weapon.id;
   const sound=rangeAudio();
   if(kind==='pistol')prepareRangeShot();
@@ -336,8 +386,9 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   },kind==='bat'?145:90);
  }
 
- function changeWeapon(direction:number){
-  setSelected(index=>(index+direction+weapons.length)%weapons.length);
+ function selectWeapon(index:number){
+  if(index===selected)return;
+  setSelected(index);
   setSwing(null);
   physics.onWeaponChange(traps.active.size>0);
  }
@@ -372,7 +423,7 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
    <div className="range-boundaries" aria-hidden="true"/>
    {surfaceTouch&&<div key={surfaceTouch.id} className="range-contact" data-side={surfaceTouch.side} aria-hidden="true"
     style={{'--contact-x':`${surfaceTouch.x}px`,'--contact-y':`${surfaceTouch.y}px`} as CSSProperties}/>}
-   <RangeTrapPanel active={traps.active} activate={kind=>{
+   <RangeTrapPanel active={traps.active} poopSelected={weapon.id==='poop'} selectPoop={()=>selectWeapon(poopWeaponIndex)} activate={kind=>{
     if(!traps.start(kind))return;
     const sound=rangeAudio();
     if(sound&&kind!=='spikes'){
@@ -383,25 +434,26 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
    }}/>
    {reaction&&<span className="range-reaction" key={`label-${reaction.id}`}>{reactions[reaction.part].text}</span>}
    <div ref={actor} className={`range-actor range-motion-${physics.motion}`} onPointerDown={aim} onPointerMove={physics.dragMove} onPointerUp={event=>physics.release(event)} onPointerCancel={event=>physics.release(event,true)} onLostPointerCapture={event=>physics.release(event,true)}>
-    <div className={`range-avatar-rig ${spawning?'range-spawn':''} ${growing.map(p=>'range-grow-'+p).join(' ')} ${Array.from(health.detached).map(p=>'range-cut-'+p).join(' ' )}`} style={{transform:`rotate(${physics.tilt}deg) scale(${physics.squeezeAxis==='horizontal'?1+physics.squash:1-physics.squash*.65},${physics.squeezeAxis==='vertical'?1+physics.squash:1-physics.squash*.65})`}}>
+    <div ref={rig} className={`range-avatar-rig ${spawning?'range-spawn':''} ${growing.map(p=>'range-grow-'+p).join(' ')} ${Array.from(health.detached).map(p=>'range-cut-'+p).join(' ' )}`} style={{transform:`rotate(${physics.tilt}deg) scale(${physics.squeezeAxis==='horizontal'?1+physics.squash:1-physics.squash*.65},${physics.squeezeAxis==='vertical'?1+physics.squash:1-physics.squash*.65})`}}>
      <PixelAvatar rangeFaces outfit={outfit} wetness={wetness} pose="range" state={emotion} hit={reaction?.part} decals={decals} joints={physics.joints}/>
     </div>
-    {weaponPosition&&<div key={swing?.id??'hand'} className="range-floating-weapon" data-weapon={weapon.id} style={weaponPosition} aria-hidden="true">
+    {weapon.id!=='poop'&&weaponPosition&&<div key={swing?.id??'hand'} className="range-floating-weapon" data-weapon={weapon.id} style={weaponPosition} aria-hidden="true">
      <span className={holding?'range-weapon-art':`range-weapon-art range-attack-${weapon.id}`}>
       <WeaponArt weapon={weapon.id} firing={weapon.id==='pistol'}/>
      </span>
     </div>}
     {reaction&&<span key={`impact-${reaction.id}`} className="range-impact" style={{left:`${reaction.target.aimX??reaction.target.x}%`,top:`${(reaction.target.aimY??reaction.target.y)/104*100}%`}}>✦</span>}
    </div>
+   {poopThrows.map(shot=><RangePoopProjectile key={shot.id} shot={shot}/>)}
    <RangeTrapActors active={traps.active} nodes={traps.nodes}/>
    {fragments.shown.map(piece=><div key={piece.id} className={"range-piece"+(fading?" range-old-fade":"")} data-part={piece.part} onPointerDown={e=>{e.stopPropagation();fragments.nudge(piece.id);}} style={{left:piece.x,top:piece.y,width:piece.w,height:piece.h,transform:`rotate(${piece.angle}deg)`}}>
     <PixelAvatar rangeFaces outfit={outfit} wetness={wetness} pose="range" state={piece.part==='head'?'detached':emotion} viewBox={piece.viewBox} joints={{}}/>
    </div>)}
    <RangeBursts bursts={bursts}/>
    <div className="range-selector" role="group" aria-label="Выбор оружия">
-    <button type="button" aria-label="Предыдущее оружие" onClick={()=>changeWeapon(-1)}>‹</button>
+    <button type="button" aria-label="Предыдущее оружие" onClick={()=>selectWeapon((selected+weapons.length-1)%weapons.length)}>‹</button>
     <button className="range-keyboard-attack" type="button" disabled={weapon.id==='hand'} onClick={()=>attack({x:50,y:60,layer:'torso',bodyPart:'belly'})} aria-label={`${weapon.action} в центр туловища`}>{weapon.name}</button>
-    <button type="button" aria-label="Следующее оружие" onClick={()=>changeWeapon(1)}>›</button>
+    <button type="button" aria-label="Следующее оружие" onClick={()=>selectWeapon((selected+1)%weapons.length)}>›</button>
    </div>
   </div>
  </section>;

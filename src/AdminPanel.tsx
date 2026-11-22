@@ -54,6 +54,7 @@ export function AdminPanel({game,local,error,onSet,onChange}:{
    const dogCare=next.dogCare&&{...next.dogCare,startedAt:next.dogCare.startedAt+offset,
     nextMessAt:next.dogCare.nextMessAt+offset,lastFedAt:next.dogCare.lastFedAt+offset,
     diedAt:next.dogCare.diedAt===null?null:next.dogCare.diedAt+offset,
+    hungerShelterAt:next.dogCare.hungerShelterAt===undefined?undefined:next.dogCare.hungerShelterAt+offset,
     messes:next.dogCare.messes.map(mess=>({...mess,at:mess.at+offset}))};
    return {
     ...next,updated:current.updated,born:next.born+offset,

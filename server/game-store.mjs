@@ -142,11 +142,11 @@ async function openPostgres(url){
  }catch(error){await pool.end();throw error;}
 
  const query=async(sql,args)=>(await pool.query(postgresParams(sql),args)).rows;
- const world=worldStore(query,async(steps,readOnly)=>{
+ const world=worldStore(async steps=>{
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
-   await client.query(readOnly?'SELECT pg_advisory_xact_lock_shared(641150390)':'SELECT pg_advisory_xact_lock(641150390)');
+   await client.query('SELECT pg_advisory_xact_lock(641150390)');
    const operations=steps();
    let step=operations.next();
    while(!step.done){
@@ -234,8 +234,8 @@ export async function openGameStore(path,url){
  db.function('petrashka_fold',{deterministic:true},value=>value.toLowerCase());
 
  const query=(sql,args)=>db.prepare(sql).all(...args);
- const world=worldStore(query,(steps,readOnly)=>{
-  db.exec(readOnly?'BEGIN':'BEGIN IMMEDIATE');
+ const world=worldStore(steps=>{
+  db.exec('BEGIN IMMEDIATE');
   try{
    const operations=steps();
    let step=operations.next();

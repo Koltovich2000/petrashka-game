@@ -1,5 +1,6 @@
 import {memo,type CSSProperties,type RefObject} from 'react';
 import {rangeTraps,type TrapKind,type TrapStrike} from './rangeTraps';
+import {RangePoopIcon} from './RangePoopEffects';
 
 const kinds=Object.keys(rangeTraps) as TrapKind[];
 const teeth=Array.from({length:8},(_,index)=>index);
@@ -44,12 +45,15 @@ const TrapArt=memo(function TrapArt({kind,icon=false}:{kind:TrapKind;icon?:boole
  </svg>;
 });
 
-export function RangeTrapPanel({active,activate}:{active:ReadonlySet<TrapKind>;activate:(kind:TrapKind)=>void}){
- return <div className="range-trap-panel" role="group" aria-label="Ловушки">
+export function RangeTrapPanel({active,activate,poopSelected,selectPoop}:{active:ReadonlySet<TrapKind>;activate:(kind:TrapKind)=>void;poopSelected:boolean;selectPoop:()=>void}){
+ return <div className="range-trap-panel" role="group" aria-label="Ловушки и метательное оружие">
   {kinds.map(kind=><button type="button" key={kind} aria-label={kind==='saw'?'Циркулярная пила':undefined}
    data-trap-button={kind} disabled={active.has(kind)} data-running={active.has(kind)||undefined} onClick={()=>activate(kind)}>
    <TrapArt kind={kind} icon/><span>{rangeTraps[kind].name}</span>
   </button>)}
+  <button type="button" className="range-poop-button" aria-pressed={poopSelected} onClick={selectPoop}>
+   <RangePoopIcon/><span>Говно</span>
+  </button>
  </div>;
 }
 

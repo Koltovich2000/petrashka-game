@@ -6,8 +6,8 @@ import {acknowledgeHospital,dischargeHospital} from './hospital';
 import {categoryKeys,type Category} from './wardrobe';
 import {defaultCharacterName,parseCharacterName} from './characterName';
 import {
- claimDailyReward,dailyDay,dailyStart,finishDaily,newDaily,recordDailyActivity,recordDailyFinish,
- recordDailyMeal,recordDailyPet,recordDailySleep,recordDailyWake,type TaskId,
+ claimDailyReward,dailyDay,dailyStart,updateDaily,recordDailyAction,recordDailyActivity,recordDailyBallReturn,
+ recordDailyFinish,recordDailyMeal,recordDailyPet,recordDailyStats,recordDailyWake,type TaskId,
 } from './dailyTasks';
 import {gameTime,realGameTime,type PausePeriod} from './world';
 import type {AdminValues} from './adminTypes';
@@ -32,44 +32,47 @@ export type GameCommand=
 export function settleGame(game:Game,now:number,pauses:readonly PausePeriod[]=[],wallTime=now):Game{
  let updated=advance(game,now,true);
  if(game.tutorial<TUTORIAL.done)return updated;
+ updated=recordDailyStats(updated,realGameTime(game.updated,pauses),game);
  const day=dailyDay(wallTime);
  const activity=game.roomAction;
- const completion=!game.hospital&&game.sleepUntil===null&&
-  (activity?.kind==='computer'||activity?.kind==='dumbbells')&&
-  activity.ends<=updated.updated&&activity!==updated.roomAction
-  ?{kind:activity.kind,start:realGameTime(activity.started,pauses),end:realGameTime(activity.ends,pauses)}:null;
+ const ends=activity?.ends??game.restUntil;
+ const completion=!game.hospital&&game.sleepUntil===null&&ends!==null&&ends<=now
+  ?{at:realGameTime(ends,pauses),state:advance(game,ends,true)}:null;
+ function recordCompletion(state:Game){
+  if(!completion)return state;
+  const finished=activity?.ends!=null&&!completion.state.roomAction
+   ?recordDailyFinish(state,activity.kind,completion.at):state;
+  return recordDailyStats(finished,completion.at,completion.state);
+ }
  if(game.daily&&game.daily.day<day){
-  if(completion&&dailyDay(completion.end)===game.daily.day){
-   updated=recordDailyFinish(updated,completion.kind,completion.start,completion.end);
-  }
-  const boundary=gameTime(dailyStart(game.daily.day+1)-1,pauses);
-  updated=finishDaily(updated,advance(game,boundary,true));
+  updated=recordCompletion(updated);
+  const boundary=dailyStart(game.daily.day+1)-1;
+  if(updated.daily?.ids.includes('balancedStats'))updated=recordDailyStats(updated,boundary,advance(game,gameTime(boundary,pauses),true));
  }
- if(!game.daily||game.daily.day<day){
-  const startsAt=dailyStart(day);
-  const started=game.updated<=gameTime(startsAt,pauses);
-  const atStart=started?advance(game,gameTime(startsAt,pauses),true):game;
-  updated={...updated,daily:newDaily(day,atStart,started)};
+ updated=updateDaily(updated,wallTime);
+ const startsAt=dailyStart(day),gameStart=gameTime(startsAt,pauses);
+ if(game.daily?.day!==day&&game.updated<=gameStart&&updated.daily?.ids.includes('balancedStats')){
+  updated=recordDailyStats(updated,startsAt,advance(game,gameStart,true));
  }
- if(completion&&dailyDay(completion.end)===day){
-  updated=recordDailyFinish(updated,completion.kind,completion.start,completion.end);
- }
- return updated;
+ return recordDailyStats(recordCompletion(updated),wallTime);
 }
 
 export function runGameCommand(game:Game,command:GameCommand,now:number,location:Location,admin=false,wallTime=now,pauses:readonly PausePeriod[]=[]):Game{
  const current=recordFloorMess(settleGame(game,now,pauses,wallTime),location);
  if(command.kind==='dailyClaim')return claimDailyReward(current,command.day,command.id);
- const next=recordFloorMess(applyCommand(current,command,location,admin),location);
+ const next=recordDailyStats(recordFloorMess(applyCommand(current,command,location,admin),location),wallTime);
  if(current.tutorial<TUTORIAL.done||current.hospital)return next;
  if(command.kind==='care'&&next.cares>current.cares){
   if(command.action==='feed')return recordDailyMeal(next,command.food==='noodles',wallTime);
   if(command.action==='pet')return recordDailyPet(next,wallTime);
-  if(command.action==='sleep')return recordDailySleep(next,wallTime);
+  if(command.action==='sleep')return recordDailyAction(next,'sleep',wallTime);
  }
  if(command.kind==='wake'&&current.sleepUntil!==null&&next.sleepUntil===null)return recordDailyWake(next,wallTime);
  if(command.kind==='activity'&&next.roomAction&&next.roomAction.id!==current.roomAction?.id){
   return recordDailyActivity(next,next.roomAction.kind,wallTime);
+ }
+ if(command.kind==='ball'&&current.roomAction?.kind==='ball'&&next.roomAction?.kind==='ball'&&next.roomAction.returns>current.roomAction.returns){
+  return recordDailyBallReturn(next,wallTime);
  }
  return next;
 }

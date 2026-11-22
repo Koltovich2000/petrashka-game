@@ -242,6 +242,12 @@ test('global pause and poll survive server reopen, while voting and its deadline
  const paused={kind:'pause',paused:true};
  assert.equal((await request('/api/admin/world','222',paused)).status,403);
  assert.equal((await world(paused)).data.paused,true);
+ now+=30*60_000;
+ assert.equal((await game({kind:'care',action:'sleep'})).data.state.sleepUntil,null);
+ assert.equal((await world()).data.paused,true);
+ assert.equal((await world({kind:'pause',paused:false})).data.paused,false);
+ now+=60_000;
+ assert.equal((await world(paused)).data.paused,true);
  const id=randomUUID();
  const poll={kind:'poll',id,question:'Куда поедем?',options:['В город','За город'],minutes:15};
  const published=await Promise.all([world(poll),world(poll)]);
@@ -251,22 +257,42 @@ test('global pause and poll survive server reopen, while voting and its deadline
  assert.equal((await game({kind:'vote',pollId:id,choice:0})).data.world.poll.choice,0);
  assert.deepEqual((await game({kind:'vote',pollId:id,choice:1})).data.world.poll.counts,[1,0]);
  assert.equal((await game(undefined,'333')).data.world.poll.counts,null);
+ assert.equal((await game(undefined,'333')).data.world.poll.totalVotes,1);
 
  server.emit('close');
  server=createAppServer(options);
- now+=30*60_000;
+ now+=14*60_000;
  const stillPaused=await game({kind:'care',action:'sleep'});
  assert.equal(stillPaused.data.state.sleepUntil,null);
  assert.equal(stillPaused.data.state.food,100);
  assert.equal(stillPaused.data.world.paused,true);
- assert.deepEqual((await game(undefined,'333')).data.world.poll.counts,[1,0]);
- assert.equal((await game({kind:'vote',pollId:id,choice:1},'333')).status,409);
- assert.equal((await world({kind:'pause',paused:false})).data.paused,false);
  now+=7*60_000;
  const resumed=await game();
- assert.equal(resumed.data.state.food,99);
+ assert.equal(resumed.data.state.food,99.25);
  assert.equal(resumed.data.state.updated,origin+10*60_000);
  assert.equal(resumed.data.world.paused,false);
+ assert.deepEqual((await game(undefined,'333')).data.world.poll.counts,[1,0]);
+ assert.equal((await game({kind:'vote',pollId:id,choice:1},'333')).status,409);
+
+ // Early resume closes a linked poll, reveals its final count and rejects further votes.
+ assert.equal((await world(paused)).data.paused,true);
+ const second={...poll,id:randomUUID()};
+ assert.equal((await world(second)).status,200);
+ assert.equal((await game({kind:'vote',pollId:second.id,choice:1})).status,200);
+ now+=60_000;
+ const early=await world({kind:'pause',paused:false});
+ assert.equal(early.data.paused,false);
+ assert.equal(early.data.poll.endsAt,now);
+ assert.deepEqual((await game(undefined,'333')).data.world.poll.counts,[0,1]);
+ assert.equal((await game({kind:'vote',pollId:second.id,choice:0},'333')).status,409);
+ assert.equal((await world(second)).status,200);
+ assert.equal((await world()).data.poll.endsAt,now);
+ assert.equal((await game({kind:'care',action:'sleep'})).data.state.sleepUntil,-1);
+
+ // A new manual pause does not inherit the deadline of an already-ended poll.
+ assert.equal((await world(paused)).data.paused,true);
+ now+=30*60_000;
+ assert.equal((await game()).data.world.paused,true);
 });
 
 test('character names are unique in concurrent requests and legacy conflicts keep player progress',async t=>{

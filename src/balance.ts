@@ -1,4 +1,4 @@
-export const BALANCE={tick:600_000,offlineCap:43_200_000,exhaustionGrace:7_200_000,damagePerHour:2,freeFoodCooldown:3_600_000,maxLevel:20};
+export const BALANCE={tick:600_000,foodEnergyDecay:.75,offlineCap:43_200_000,exhaustionGrace:7_200_000,damagePerHour:2,freeFoodCooldown:3_600_000,maxLevel:20};
 export const TUTORIAL={sandwich:0,noodles:1,bath:2,sleep:3,done:4,noodlePrice:100} as const;
 export const tutorialRewards=[{xp:45,money:TUTORIAL.noodlePrice},{xp:15,money:0},{xp:15,money:0},{xp:25,money:0}] as const;
 export const FOOD=[

@@ -52,7 +52,8 @@ function idle(g:Game,end:number):Game{
  s.baseClock=total%BALANCE.tick;
  // Process full ticks, preserving the remainder across calls and reloads.
  for(let i=0;i<ticks;i++){
-  s.food=changeStat(s,'food',-1);s.energy=changeStat(s,'energy',-1);s.mood=changeStat(s,'mood',-.5);s.hygiene=changeStat(s,'hygiene',-.5);
+  s.food=changeStat(s,'food',-BALANCE.foodEnergyDecay);s.energy=changeStat(s,'energy',-BALANCE.foodEnergyDecay);
+  s.mood=changeStat(s,'mood',-.5);s.hygiene=changeStat(s,'hygiene',-.5);
   if(s.hygiene===0)s.mood=changeStat(s,'mood',-.5);
   const tickAt=g.updated+BALANCE.tick-g.baseClock+i*BALANCE.tick;
   if(s.food===0||s.energy===0){
@@ -64,21 +65,31 @@ function idle(g:Game,end:number):Game{
  }
  return {...s,updated:end};
 }
+function advancePet(game:Game,now:number){
+ if(!game.dog&&!game.dogCare)return;
+ game.dogCare=advanceDogCare(game.dogCare??newDogCare(now),now,game.updated);
+ game.dog=game.dog&&game.dogCare.diedAt===null&&!game.dogCare.sheltered;
+}
 export function advance(g:Game,now=Date.now(),offline=false):Game{
  now=Math.max(now,g.updated);let s={...g,hairWashedAt:g.hairWashedAt??null,economy:{...g.economy}};
  if(!g.introCompleted)return {...s,updated:now};
  s.closet=refreshClosetOutfits(s.closet);
- if(s.dog){
-  s.dogCare=advanceDogCare(s.dogCare??newDogCare(now),now);
-  s.dog=s.dogCare.diedAt===null&&!s.dogCare.sheltered;
- }
+ const action=s.roomAction;
+ const dogCleanupEnds=!s.hospital&&s.health>0&&s.sleepUntil===null&&action?.kind==='clean'&&
+  action.cleanupDogMessAt!==undefined&&action.ends<=now?Math.max(s.updated,action.ends):null;
+ advancePet(s,dogCleanupEnds??now);
  if(s.hospital)return billHospital(s,now);
  if(s.health===0){
   if(s.updated>=s.protectedUntil)return billHospital(admit(s,s.updated),now);
   s.health=1;
  }
  if(g.sleepUntil!==null)return {...s,energy:changeStat(g,'energy',beds[g.bed].energy*(now-g.updated)/3_600_000),updated:now};
- if(s.roomAction&&s.roomAction.ends!==null){if(now<s.roomAction.ends)return {...s,updated:now};s={...s,updated:Math.max(s.updated,s.roomAction.ends)};s=finishActivity(s);}
+ if(s.roomAction&&s.roomAction.ends!==null){
+  if(now<s.roomAction.ends)return {...s,updated:now};
+  s=finishActivity({...s,updated:Math.max(s.updated,s.roomAction.ends)});
+  // Offline cleanup frees a slot at completion, before later mess windows.
+  if(dogCleanupEnds!==null)advancePet(s,now);
+ }
  if(s.restUntil!==null){if(now<s.restUntil)return {...s,updated:now};s={...s,energy:changeStat(s,'energy',10),updated:Math.max(s.updated,s.restUntil),restUntil:null};}
  const end=offline?Math.min(now,s.updated+BALANCE.offlineCap):now;
  const next=idle(s,end);
@@ -158,7 +169,7 @@ export function surrenderDog(game:Game):Game{
 export function reclaimDog(game:Game):Game{
  const care=game.dogCare;
  if(game.dog||!care?.sheltered||game.tutorial<TUTORIAL.done||game.health===0||game.economy.balance<dogReclaimPrice)return game;
- const {sheltered:_,...dogCare}=care;
+ const {sheltered:_,hungerShelterAt:__,...dogCare}=care;
  const now=Math.floor(game.updated);
  return {...game,dog:true,
   dogCare:{...dogCare,startedAt:now,lastFedAt:now,nextMessAt:now+dogMessInterval},

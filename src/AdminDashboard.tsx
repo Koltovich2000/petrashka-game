@@ -286,19 +286,30 @@ function Journal({request}:{request:Request}){
 function WorldControls({request}:{request:Request}){
  const [world,setWorld]=useState<WorldState>();
  const [error,setError]=useState('');
- const loading=useRef(false);
+ const loading=useRef<AbortController|null>(null);
+ const saving=useRef(false);
  const mutation=useMutation();
  const {run}=mutation;
  const refresh=useCallback(()=>{
-  if(loading.current)return;
-  loading.current=true;
-  void request<WorldState>('/world').then(value=>{setWorld(value);setError('');})
-   .catch((failure:Error)=>setError(failure.message)).finally(()=>{loading.current=false;});
+  if(loading.current||saving.current)return;
+  const controller=new AbortController();
+  loading.current=controller;
+  void request<WorldState>('/world',undefined,controller.signal).then(value=>{
+   if(!controller.signal.aborted){setWorld(value);setError('');}
+  }).catch((failure:Error)=>{
+   if(!controller.signal.aborted)setError(failure.message);
+  }).finally(()=>{if(loading.current===controller)loading.current=null;});
  },[request]);
- useEffect(refresh,[refresh]);
+ useEffect(()=>{refresh();return()=>loading.current?.abort();},[refresh]);
  async function submit(command:WorldCommand){
   let successful=false;
-  await run(async()=>{setWorld(await request<WorldState>('/world',command));setError('');successful=true;});
+  await run(async()=>{
+   saving.current=true;
+   loading.current?.abort();
+   loading.current=null;
+   try{setWorld(await request<WorldState>('/world',command));setError('');successful=true;}
+   finally{saving.current=false;}
+  });
   return successful;
  }
  return <section className="admin-section" aria-label="Управление игрой">
@@ -308,11 +319,12 @@ function WorldControls({request}:{request:Request}){
  </section>;
 }
 
-export function AdminDashboard({token}:{token:string}){
+export function AdminDashboard({token,onOpenChange}:{token:string;onOpenChange:(open:boolean)=>void}){
  const dialog=useRef<HTMLDialogElement>(null);
  const operations=useRef(new Map<string,string>());
  const [open,setOpen]=useState(false);
  const [section,setSection]=useState<Section>('players');
+ useEffect(()=>()=>onOpenChange(false),[onOpenChange]);
  const request=useCallback<Request>(async<T,>(path:string,body?:object,signal?:AbortSignal)=>{
   const controller=new AbortController();
   const abort=()=>controller.abort();
@@ -346,8 +358,8 @@ export function AdminDashboard({token}:{token:string}){
  const changeAll:ChangeAll=command=>mutate('/players/adjust',command);
 
  return <>
-  <button type="button" className="dev-tools-toggle" onClick={()=>{setOpen(true);dialog.current?.showModal();}}>Админ-панель</button>
-  <dialog ref={dialog} className="dev-tools admin-dashboard" aria-labelledby="admin-dashboard-title" onClose={()=>setOpen(false)}>
+  <button type="button" className="dev-tools-toggle" onClick={()=>{setOpen(true);onOpenChange(true);dialog.current?.showModal();}}>Админ-панель</button>
+  <dialog ref={dialog} className="dev-tools admin-dashboard" aria-labelledby="admin-dashboard-title" onClose={()=>{setOpen(false);onOpenChange(false);}}>
    <div className="admin-header">
     <h2 id="admin-dashboard-title">Админ-панель</h2>
     <button type="button" aria-label="Закрыть админ-панель" onClick={()=>dialog.current?.close()} autoFocus>×</button>

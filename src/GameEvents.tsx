@@ -8,6 +8,9 @@ import type {PollState,WorldState} from './world';
 import './game-events.css';
 
 const moscowDate=new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'});
+const moscowTime=new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'});
+const votePlural=new Intl.PluralRules('ru-RU');
+const voteWords:Record<string,string>={one:'голос',few:'голоса',many:'голосов',other:'голоса'};
 
 export function useWorldClock(serverNow?:number){
  const [now,setNow]=useState(serverNow??Date.now());
@@ -33,7 +36,7 @@ export function DailyNotebook({game,serverNow,onClose,onClaim}:{game:Game;server
  const dialog=useRef<HTMLDialogElement>(null);
  const now=useWorldClock(serverNow);
  const day=dailyDay(now);
- const daily=game.daily?.day===day?game.daily:game.daily?null:newDaily(day,game,false);
+ const daily=game.daily?.day===day?game.daily:game.daily?null:newDaily(day,game,now);
  const pending=game.dailyRewards??[];
  const earlier=pending.filter(reward=>reward.day!==day);
  const [claiming,setClaiming]=useState(false);
@@ -57,12 +60,11 @@ export function DailyNotebook({game,serverNow,onClose,onClaim}:{game:Game;server
    const task=tasks[id];
    const count=daily.counts[id]??0;
    const available=pending.some(reward=>reward.day===day&&reward.id===id);
-   const atReset=id==='healthy'||id==='noSleep';
    return <li key={id}>
     <span className="task-tier">{['Лёгкое','Среднее','Сложное'][task.tier]}</span>
     <strong>{task.title}</strong>
-    {!atReset&&<progress aria-label={task.title} value={count} max={task.target}/>}
-    <div><span>{count>=task.target?(available?'✓ Выполнено':'✓ Награда получена'):atReset?'Проверка в 12:00 МСК':`${count} / ${task.target}`}</span><b>+{rubles(task.reward)}</b></div>
+    <progress aria-label={task.title} value={count} max={task.target}/>
+    <div><span>{count>=task.target?(available?'✓ Выполнено':'✓ Награда получена'):`${count} / ${task.target}`}</span><b>+{rubles(task.reward)}</b></div>
     {available&&<button type="button" disabled={claiming} onClick={()=>void claim({day,id})}>Забрать деньги</button>}
    </li>;
   })}</ol>:<p role="status">Обновляем задания…</p>}
@@ -88,41 +90,71 @@ export function PollResults({poll}:{poll:PollState}){
  })}</ul>;
 }
 
-export function WorldNotice({world,onVote}:{world:WorldState;onVote:(id:string,choice:number)=>Promise<boolean>}){
- const poll=world.poll;
- const now=useWorldClock(world.now);
- const [open,setOpen]=useState(false);
+type Vote=(id:string,choice:number)=>Promise<boolean>;
+
+function PollNotice({poll,serverNow,playerId,suspended,onVote}:{poll:PollState;serverNow:number;playerId:string;suspended:boolean;onVote:Vote}){
+ const now=useWorldClock(serverNow);
+ const done=serverNow>=poll.endsAt;
+ const waiting=!done&&now>=poll.endsAt;
+ const resultKey='petrashka:poll-result:'+playerId;
+ const [seenResult,setSeenResult]=useState(()=>{
+  try{return localStorage.getItem(resultKey)===poll.id;}catch{return false;}
+ });
+ const [override,setOverride]=useState<{done:boolean;open:boolean}>();
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const dialog=useRef<HTMLDialogElement>(null);
- const done=Boolean(poll&&now>=poll.endsAt);
- const total=poll?.counts?.reduce((sum,value)=>sum+value,0)??0;
- const winners=done&&total>0&&poll?.options.filter((_,index)=>poll.counts?.[index]===Math.max(...poll.counts!));
- function show(){setOpen(true);dialog.current?.showModal();}
+ const open=override?.done===done?override.open:!done||!seenResult;
+ useEffect(()=>{
+  const node=dialog.current;
+  if(open&&!suspended&&!node?.open)node?.showModal();
+  if((!open||suspended)&&node?.open)node.close();
+ },[open,suspended]);
+ function dismiss(){
+  setOverride({done,open:false});
+  setError('');
+  if(done){
+   setSeenResult(true);
+   try{localStorage.setItem(resultKey,poll.id);}catch{/* The result remains dismissed for this session. */}
+  }
+ }
  async function vote(index:number){
-  if(!poll||busy||done)return;
+  if(busy||done||waiting)return;
   setBusy(true);setError('');
   try{if(!await onVote(poll.id,index))setError('Голос не сохранён. Обнови голосование и попробуй снова.');}
   finally{setBusy(false);}
  }
- if(!world.paused&&!poll)return null;
- return <section className="world-events" aria-label="Объявления игры">
-  {world.paused&&<p className="world-paused" role="status">Петрашка поставил на паузу игру</p>}
-  {poll&&<button type="button" className="world-poll-button" onClick={show}>
+ const total=poll.totalVotes;
+ return <>
+  <button type="button" className="world-poll-button" onClick={()=>setOverride({done,open:true})}>
    <strong>{done?'Итоги голосования':'Голосование'}</strong>
-   <span>{done&&winners?winners.join(' · '):poll.question}</span>
+   <span>{poll.question}</span>
    {!done&&<time>{remainingTime(poll.endsAt,now)}</time>}
-  </button>}
-  {poll&&<dialog ref={dialog} className="event-dialog" aria-labelledby="poll-title" onClose={()=>{setOpen(false);setError('');}}>
-   {open&&<>
-    <header><h2 id="poll-title">{done?'Итоги голосования':'Голосование'}</h2>
-     <button type="button" className="event-close" aria-label="Закрыть голосование" onClick={()=>dialog.current?.close()}>×</button></header>
-    <p className="poll-question">{poll.question}</p>
-    {!done&&<p className="poll-time">До окончания <time>{remainingTime(poll.endsAt,now)}</time></p>}
-    {poll.counts?<PollResults poll={poll}/>:done?<p role="status">Подводим итоги…</p>:
+  </button>
+  <dialog ref={dialog} className="event-dialog poll-dialog" aria-labelledby="poll-title"
+   onCancel={event=>{event.preventDefault();dismiss();}}>
+   <div className="poll-card">
+    <h2 id="poll-title"><GameIcon name="megaphone"/>{done?'Итоги голосования':'Голосование'}<GameIcon name="megaphone"/></h2>
+    {!done&&<button type="button" className="event-close" aria-label="Закрыть голосование" onClick={dismiss}>×</button>}
+    <p className="poll-question" dir="auto">{poll.question}</p>
+    {poll.counts?<PollResults poll={poll}/>:waiting?<p role="status">Подводим итоги…</p>:
      <div className="poll-options">{poll.options.map((option,index)=><button type="button" key={option} disabled={busy} onClick={()=>void vote(index)}>{option}</button>)}</div>}
-    {error&&!done&&poll.choice===null&&<p role="alert">{error}</p>}
-   </>}
-  </dialog>}
+    {error&&!done&&!waiting&&poll.choice===null&&<p role="alert">{error}</p>}
+    <footer className="poll-meta">
+     <span><GameIcon name="voters"/>{total} {voteWords[votePlural.select(total)]}</span>
+     {!done&&<span><GameIcon name="clock"/><time dateTime={new Date(poll.endsAt).toISOString()}>До {moscowTime.format(poll.endsAt)} МСК</time></span>}
+    </footer>
+    {done&&<button type="button" className="poll-ok" onClick={dismiss}>Ок</button>}
+   </div>
+  </dialog>
+ </>;
+}
+
+export function WorldNotice({world,playerId,suspended,onVote}:{world:WorldState;playerId:string;suspended:boolean;onVote:Vote}){
+ const {paused,poll,now}=world;
+ if(!paused&&!poll)return null;
+ return <section className="world-events" aria-label="Объявления игры">
+  {paused&&<p className="world-paused" role="status">Петрашка поставил на паузу игру</p>}
+  {poll&&<PollNotice key={poll.id} poll={poll} serverNow={now} playerId={playerId} suspended={suspended} onVote={onVote}/>}
  </section>;
 }

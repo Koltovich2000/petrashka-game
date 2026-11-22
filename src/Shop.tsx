@@ -65,7 +65,7 @@ export function Shop({game,onBuy,onAdoptDog,onSurrenderDog,onReclaimDog,onBuyDog
    </article>
    {game.dog&&<article>
     <h3>Корм для собаки</h3>
-    <p>Одна порция восстанавливает сытость. Покорми собаку в течение 48 часов, чтобы она не умерла от голода.</p>
+    <p>Одна порция восстанавливает сытость до 100%. Через 48 часов без еды сытость падает до нуля. Ещё через 24 часа собаку заберут в приют.</p>
     <p>Порций дома: {game.dogFood??0}</p>
     <button type="button" disabled={!canShop||game.economy.balance<dogFoodPrice} onClick={onBuyDogFood}>Купить корм · {rubles(dogFoodPrice)}</button>
    </article>}

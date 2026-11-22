@@ -46,6 +46,7 @@ function App({profile}: {profile?:TelegramProfile}){
 
  const [screen,setScreen]=useState<typeof tabs[number]['id']>('room');
  const [notebook,setNotebook]=useState(false);
+ const [adminOpen,setAdminOpen]=useState(false);
  const {game,current:ref,ready,error,commit,send,key,world,needsCharacterName,nameError,clearNameError}=useGameState(profile,locationRef);
  const closet=game.closet??starterCloset();
  const level=playerLevel(game.economy.xp);
@@ -176,8 +177,8 @@ function App({profile}: {profile?:TelegramProfile}){
   }
  }
  if(!ready)return <main className="app"><p role="status">{error||'Загружаем твоё сохранение…'}</p>{error&&<button onClick={()=>void send({kind:'sync'})}>Повторить</button>}</main>;
- const announcements=world&&<WorldNotice world={world} onVote={async(pollId,choice)=>Boolean(await send({kind:'vote',pollId,choice}))}/>;
- const dashboard=profile?.isAdmin&&<Suspense fallback={null}><AdminDashboard token={profile.gameToken}/></Suspense>;
+ const announcements=world&&playerId&&<WorldNotice world={world} playerId={playerId} suspended={adminOpen} onVote={async(pollId,choice)=>Boolean(await send({kind:'vote',pollId,choice}))}/>;
+ const dashboard=profile?.isAdmin&&<Suspense fallback={null}><AdminDashboard token={profile.gameToken} onOpenChange={setAdminOpen}/></Suspense>;
  if(!game.introCompleted||needsCharacterName)return <>{announcements}
   <div inert={world?.paused&&!needsCharacterName}>
    <Intro index={needsCharacterName?LAST_INTRO_SCENE:game.introScene??0}
@@ -201,14 +202,16 @@ function App({profile}: {profile?:TelegramProfile}){
    }}
    onChange={update=>{if(localAdmin)commit(update(ref.current));}}/>
  </Suspense>}
- <PlayerBar name={parseCharacterName(game.characterName)??defaultCharacterName} level={level} xp={game.economy.xp} balance={game.economy.balance} wetness={wetness} onHelp={()=>setHelp(true)} onTasks={screen==='room'?()=>setNotebook(true):undefined} taskReward={Boolean(game.dailyRewards?.length)}/>
- {announcements}
+ <div className="game-header">
+  <PlayerBar name={parseCharacterName(game.characterName)??defaultCharacterName} level={level} xp={game.economy.xp} balance={game.economy.balance} wetness={wetness} onHelp={()=>setHelp(true)} onTasks={screen==='room'?()=>setNotebook(true):undefined} taskReward={Boolean(game.dailyRewards?.length)}/>
+  {announcements}
+ </div>
  {notebook&&<DailyNotebook game={game} serverNow={world?.now} onClose={()=>setNotebook(false)}
   onClaim={async reward=>{
    const result=await send({kind:'dailyClaim',...reward});
    return Boolean(result&&!result.state.dailyRewards?.some(item=>item.day===reward.day&&item.id===reward.id));
   }}/>}
- <div className="game-pages">{tabs.map(tab=><main key={tab.id} hidden={screen!==tab.id} inert={world?.paused&&(tab.id==='room'||tab.id==='shop'||tab.id==='wardrobe')} className="app game-page" data-screen={tab.id}>
+ <div className="game-pages" inert={world?.paused}>{tabs.map(tab=><main key={tab.id} hidden={screen!==tab.id} className="app game-page" data-screen={tab.id}>
   {tab.id==='room'&&<>
    <HomeScreen location={location} onLocationChange={changeLocation} active={screen==='room'} game={game} outfit={closet.outfit} effect={effect} gain={gain} eatenFood={eatenFood} motionBusy={motionBusy} interact={interact} setMotionBusy={setMotionBusy} onWake={()=>void send({kind:'wake'})} onActivity={roomActivity} onCancelActivity={cancelCurrentActivity} onWashStroke={washStroke} onBallReturn={ballReturned} onFeedDog={()=>void send({kind:'feedDog'})} onMove={(id,x,y)=>void send({kind:'move',id,x,y})}/>
   </>}
@@ -227,7 +230,7 @@ function App({profile}: {profile?:TelegramProfile}){
  </button>)}</div></nav>
  <div className={'toast '
 +(toast||error?'visible':'')} role="status">{error||toast}</div>
- {help&&<div className="overlay" onClick={()=>setHelp(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Как играть"><button className="round close" autoFocus onClick={()=>setHelp(false)}>✕</button><h2>Забота — это просто 💜</h2><p>Под комнатой можно переключать локации. Коротко нажми на голову, живот, руки, ноги или ступни — Петрашка отреагирует. Правая и левая стороны считаются со стороны персонажа. Чтобы погладить, проведи пальцем или мышью по его голове. Зажми Петрашку ниже головы и потяни: он испугается и начнёт раскачиваться. Отпусти — он упадёт на живот, встанет и вернётся в центр. Пока он спит или без сознания, поднимать его нельзя. Падение не отнимает здоровье.</p><p>Корми, гладь, мой Петрашку, играй с ним и укладывай спать. Сон продолжается до кнопки «Разбудить». Во сне потребности заморожены, скорость восстановления энергии зависит от кровати.</p><p>За 10 минут бодрствования: −1 сытости и энергии, −0,5 настроения и гигиены. За одно отсутствие учитываются максимум 12 часов. При длительном истощении здоровье теряется на 2 в час после первых двух часов.</p><p>При гигиене ≤50 мокнут штаны; ≤20 появляется запах; ≤10 — какашки. Движение мочалкой туда и обратно даёт +1 к гигиене. В прихожей коснись мяча в воздухе или на полу, чтобы вернуть его. Каждый возврат даёт +1 к настроению. Оба занятия можно продолжать при 100% и остановить кнопкой «Закончить». Начало мытья стоит 2 энергии, начало игры в мяч — 10 энергии. За компьютером в комнате Петрашка играет 10 минут и получает до {activities.computer.mood} пунктов настроения и {computerXP} XP.</p><p>Показатели над комнатой показывают текущее состояние Петрашки. Гардероб доступен снизу: пять категорий, по десять вещей. Каждое третье поглаживание даёт +1 настроения до 70. Перезарядка: кормление и мячик — 30 сек. Сон доступен без перезарядки. Перезарядки сохраняются после закрытия игры.</p><p>Время идёт и без тебя. При здоровье 0% Петрашка попадает в больницу. Лечение стоит {rubles(hospitalRules.rate)} за полный час.</p>{playerId&&<p className="muted">Твой Telegram ID: <strong>{playerId}</strong></p>}<p className="muted">{profile?'Прогресс хранится на сервере и привязан к твоему аккаунту Telegram.':'В браузере прогресс и тестовая госпитализация сохраняются на этом устройстве.'}</p></section></div>}</div>;
+ {help&&<div className="overlay" onClick={()=>setHelp(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Как играть"><button className="round close" autoFocus onClick={()=>setHelp(false)}>✕</button><h2>Забота — это просто 💜</h2><p>Под комнатой можно переключать локации. Коротко нажми на голову, живот, руки, ноги или ступни — Петрашка отреагирует. Правая и левая стороны считаются со стороны персонажа. Чтобы погладить, проведи пальцем или мышью по голове туда и обратно. Зажми Петрашку ниже головы и потяни: он испугается и начнёт раскачиваться. Отпусти — он упадёт на живот, встанет и вернётся в центр. Пока он спит или без сознания, поднимать его нельзя. Падение не отнимает здоровье.</p><p>Корми, гладь, мой Петрашку, играй с ним и укладывай спать. Сон продолжается до кнопки «Разбудить». Во сне потребности заморожены, скорость восстановления энергии зависит от кровати.</p><p>За 10 минут бодрствования сытость и энергия падают на 0,75 пункта, настроение и гигиена — на 0,5. За одно отсутствие учитываются максимум 12 часов. При длительном истощении здоровье теряется на 2 в час после первых двух часов.</p><p>При гигиене ≤50 мокнут штаны; ≤20 появляется запах; ≤10 — какашки. Движение мочалкой туда и обратно даёт +1 к гигиене. В прихожей коснись мяча в воздухе или на полу, чтобы вернуть его. Каждый возврат даёт +1 к настроению. Оба занятия можно продолжать при 100% и остановить кнопкой «Закончить». Начало мытья стоит 2 энергии, начало игры в мяч — 10 энергии. За компьютером в комнате Петрашка играет 10 минут и получает до {activities.computer.mood} пунктов настроения и {computerXP} XP.</p><p>Показатели над комнатой показывают текущее состояние Петрашки. Гардероб доступен снизу: пять категорий, по десять вещей. Каждое третье поглаживание даёт +1 настроения до 70. Перезарядка: кормление и мячик — 30 сек. Сон доступен без перезарядки. Перезарядки сохраняются после закрытия игры.</p><p>Время идёт и без тебя. При здоровье 0% Петрашка попадает в больницу. Лечение стоит {rubles(hospitalRules.rate)} за полный час.</p>{playerId&&<p className="muted">Твой Telegram ID: <strong>{playerId}</strong></p>}<p className="muted">{profile?'Прогресс хранится на сервере и привязан к твоему аккаунту Telegram.':'В браузере прогресс и тестовая госпитализация сохраняются на этом устройстве.'}</p></section></div>}</div>;
 }
 function TelegramEntry(){
  const [profile,setProfile]=useState<TelegramProfile>();

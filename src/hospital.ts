@@ -11,7 +11,7 @@ type Asset={name:string;price:number}&(
 );
 export type Hospital={status:'hospitalized';startedAt:number;billedHours:number;balanceSpent:number;cost:number;debt:number;sales:Asset[];notice:number};
 
-const legacyFurniturePrices={yoga:7500,dumbbells:18000,tray:35000};
+const legacyFurniturePrices:Partial<Record<FurnitureId,number>>={yoga:7500,dumbbells:18000,tray:35000,entryKitchen:4200};
 const legacyBedPrices={comfort:15000,premium:35000};
 
 export function admit(game:Game,at:number):Game{
@@ -22,7 +22,7 @@ export function admit(game:Game,at:number):Game{
 function assets(game:Game):Asset[]{
  const items:Asset[]=[];
  for(const item of furnitureCatalog)if(game.furniture[item.id]){
-  const price=game.furnitureCosts[item.id]??('art' in item?item.price:legacyFurniturePrices[item.id]);
+  const price=game.furnitureCosts[item.id]??legacyFurniturePrices[item.id]??item.price;
   if(price>0)items.push({kind:'furniture',id:item.id,name:item.name,price});
  }
  if(game.bed!=='standard'){

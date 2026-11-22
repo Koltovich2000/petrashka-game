@@ -8,8 +8,8 @@ export const locationLabels:Record<Location,string>={room:'Комната',bathr
 export function isLocation(value:unknown):value is Location{return locationIds.some(id=>id===value);}
 export const activityFurniture=[
  {id:'yoga',name:'Коврик для йоги',price:1800,level:3,location:'hall',x:.24,y:.86,icon:'🧘'},
- {id:'dumbbells',name:'Гантели',price:3900,level:5,location:'hall',x:.78,y:.78,icon:'🏋️'},
- {id:'tray',name:'Лоток для животных',price:6200,level:8,location:'bathroom',x:.29,y:.77,icon:'🐾'},
+ {id:'dumbbells',name:'Гантели',price:3000,level:5,location:'hall',x:.78,y:.78,icon:'🏋️'},
+ {id:'tray',name:'Лоток для животных',price:2800,level:8,location:'bathroom',x:.29,y:.77,icon:'🐾'},
 ] as const;
 export const furnitureCatalog=[...activityFurniture,...decorCatalog] as const;
 export type FurnitureId=typeof furnitureCatalog[number]['id'];
