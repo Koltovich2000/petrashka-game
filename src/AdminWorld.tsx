@@ -2,7 +2,7 @@ import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {PollResults,remainingTime,useWorldClock} from './GameEvents';
 import {pollLimits,type WorldState} from './world';
 
-export type WorldCommand={kind:'pause';paused:boolean}|{kind:'poll';id:string;question:string;options:string[];minutes:number};
+export type WorldCommand={kind:'pause';paused:boolean}|{kind:'poll';id:string;question:string;options:string[];minutes:number}|{kind:'removePoll';id:string};
 type Props={world?:WorldState;busy:boolean;submit:(command:WorldCommand)=>Promise<boolean>;refresh:()=>void};
 
 export function AdminWorld({world,busy,submit,refresh}:Props){
@@ -10,6 +10,7 @@ export function AdminWorld({world,busy,submit,refresh}:Props){
  const [question,setQuestion]=useState('');
  const [options,setOptions]=useState(['','']);
  const [minutes,setMinutes]=useState('10');
+ const [removeId,setRemoveId]=useState<string>();
  const draftId=useRef<{key:string;id:string}|undefined>(undefined);
  const poll=world?.poll;
  const active=Boolean(world&&poll&&poll.endsAt>world.now);
@@ -38,11 +39,24 @@ export function AdminWorld({world,busy,submit,refresh}:Props){
    </button>
   </div>
   {poll&&<div className="admin-edit">
-   <h3>{active?'Текущее голосование':'Итоги последнего голосования'}</h3>
+   <div className="admin-poll-heading">
+    <h3>{active?'Текущее голосование':'Итоги последнего голосования'}</h3>
+    <button type="button" className="admin-remove" aria-label="Удалить голосование" title="Удалить голосование"
+     disabled={busy} onClick={()=>setRemoveId(poll.id)}>×</button>
+   </div>
    <p>{poll.question}</p>
    {active&&<p>До окончания {remainingTime(poll.endsAt,now)}</p>}
    <PollResults poll={poll}/>
    <button type="button" disabled={busy} onClick={refresh}>Обновить результаты</button>
+   {removeId===poll.id&&<>
+    <p>Удалить голосование у всех игроков?</p>
+    <div className="admin-inline">
+     <button type="button" className="admin-remove" disabled={busy} onClick={async()=>{
+      if(await submit({kind:'removePoll',id:poll.id}))setRemoveId(undefined);
+     }}>Удалить</button>
+     <button type="button" disabled={busy} onClick={()=>setRemoveId(undefined)}>Отмена</button>
+    </div>
+   </>}
   </div>}
   {!active&&<form className="admin-edit" onSubmit={create}>
    <h3>Новое голосование</h3>

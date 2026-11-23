@@ -22,7 +22,7 @@ export function verifyTelegramProfile(raw, botToken, now = Math.floor(Date.now()
   if (!user || !Number.isSafeInteger(user.id) || user.id <= 0) return null;
   const username = typeof user.username === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(user.username) ? `@${user.username}` : '';
   const name = typeof user.first_name === 'string' ? user.first_name.trim().slice(0, 80) : '';
-  return {id:String(user.id), displayName:username || name || 'Зритель'};
+  return {id:String(user.id), displayName:username || name || 'Зритель',allowsWrite:user.allows_write_to_pm===true,authDate:issued};
  } catch {
   return null;
  }

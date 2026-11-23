@@ -2,15 +2,16 @@ import {activityReason,buyFurniture,furnitureCatalog,activities,isLocation,moveF
 import {FOOD,TUTORIAL,type FoodId} from './balance';
 import {applyClothing} from './economy';
 import {act,adoptDog,surrenderDog,reclaimDog,buyDogFood,feedDog,advance,beginTutorial,LAST_INTRO_SCENE,setAdminStat,cancelActivity,feed,recordFloorMess,wake,type Action,type Game} from './game';
-import {acknowledgeHospital,dischargeHospital} from './hospital';
+import {dischargeHospital} from './hospital';
 import {categoryKeys,type Category} from './wardrobe';
 import {defaultCharacterName,parseCharacterName} from './characterName';
 import {
- claimDailyReward,dailyDay,dailyStart,updateDaily,recordDailyAction,recordDailyActivity,recordDailyBallReturn,
+ claimDailyReward,dailyDay,dailyStart,dailyEnd,updateDaily,recordDailyAction,recordDailyActivity,recordDailyBallReturn,
  recordDailyFinish,recordDailyMeal,recordDailyPet,recordDailyStats,recordDailyWake,type TaskId,
 } from './dailyTasks';
 import {gameTime,realGameTime,type PausePeriod} from './world';
 import type {AdminValues} from './adminTypes';
+import {isTourSection,tourSections,type TourSection} from './tutorial';
 export type {AdminValues} from './adminTypes';
 
 export type GameCommand=
@@ -18,6 +19,7 @@ export type GameCommand=
  |{kind:'intro';characterName?:string}
  |{kind:'adopt';dogName:string}
  |{kind:'introNext';scene:number}
+ |{kind:'tourNext';section:TourSection}
  |{kind:'vote';pollId:string;choice:number}
  |{kind:'dailyClaim';day:number;id:TaskId}
  |{kind:'care';action:Action;food?:FoodId}
@@ -26,7 +28,10 @@ export type GameCommand=
  |{kind:'clothing';category:Category;index:number}
  |{kind:'buyFurniture';id:FurnitureId}
  |{kind:'move';id:FurnitureId;x:number;y:number}
- |{kind:'notice'|'discharge';notice:number}
+ |{kind:'discharge';startedAt:number;cost:number;balance:number}
+ |{kind:'hospitalAdStart';startedAt:number}
+ |{kind:'hospitalAdCancel';attempt:string}
+ |{kind:'notifications';enabled:boolean}
  |{kind:'admin';values:AdminValues};
 
 export function settleGame(game:Game,now:number,pauses:readonly PausePeriod[]=[],wallTime=now):Game{
@@ -46,7 +51,7 @@ export function settleGame(game:Game,now:number,pauses:readonly PausePeriod[]=[]
  }
  if(game.daily&&game.daily.day<day){
   updated=recordCompletion(updated);
-  const boundary=dailyStart(game.daily.day+1)-1;
+  const boundary=dailyEnd(game.daily.day)-1;
   if(updated.daily?.ids.includes('balancedStats'))updated=recordDailyStats(updated,boundary,advance(game,gameTime(boundary,pauses),true));
  }
  updated=updateDaily(updated,wallTime);
@@ -90,11 +95,18 @@ function applyCommand(game:Game,command:GameCommand,location:Location,admin:bool
   return started;
  }
  if(game.hospital){
-  if(command.kind==='notice')return acknowledgeHospital(game,command.notice);
-  if(command.kind==='discharge')return dischargeHospital(game,command.notice);
+  if(command.kind==='discharge')return dischargeHospital(game,command.startedAt,command.cost,command.balance);
   return game;
  }
  switch(command.kind){
+ case 'tourNext': {
+  if(game.tutorial!==TUTORIAL.done||!isTourSection(command.section)||command.section!==game.tourSection)return game;
+  const next={...game};
+  const section=tourSections[tourSections.indexOf(command.section)+1];
+  if(section)next.tourSection=section;
+  else delete next.tourSection;
+  return next;
+ }
  case 'care':
   if(command.action==='feed')return FOOD.some(item=>item.id===command.food)?feed(game,command.food!,game.updated):game;
   return command.action==='pet'||command.action==='sleep'?act(game,command.action,game.updated):game;

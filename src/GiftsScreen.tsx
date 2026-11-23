@@ -1,7 +1,7 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {GiftArtwork,premiumGiftPrice} from './GiftArtwork';
 import {GameIcon} from './GameIcon';
-import {giftPaymentAvailable,giftPaymentRequest,onTelegramLifecycle,openGiftInvoice} from './telegram';
+import {starPaymentsAvailable,starPaymentRequest,onTelegramLifecycle,openStarInvoice} from './telegram';
 import {maxGiftWishLength} from './giftWish';
 import './gifts.css';
 
@@ -116,13 +116,13 @@ export function GiftsScreen({active}:{active:boolean}) {
  }
 
  async function pay(gift:GiftItem) {
-  if (paymentInProgress.current || !catalog?.paymentsEnabled || !giftPaymentAvailable()) return;
+  if (paymentInProgress.current || !catalog?.paymentsEnabled || !starPaymentsAvailable()) return;
   paymentInProgress.current = true;
   setPaying(true);
   setNotice('');
   try {
-   const {id,url} = await giftPaymentRequest<{id:string;url:string}>('/api/gifts/invoice',{giftId:gift.id,anonymous,wish:wish.trim()});
-   const status = await openGiftInvoice(url);
+   const {id,url} = await starPaymentRequest<{id:string;url:string}>('/api/gifts/invoice',{giftId:gift.id,anonymous,wish:wish.trim()});
+   const status = await openStarInvoice(url);
    if (status === 'cancelled' || status === 'failed') {
     setNotice(status === 'cancelled' ? 'Оплата отменена.' : 'Оплата не прошла. Попробуйте ещё раз.');
     return;
@@ -130,7 +130,7 @@ export function GiftsScreen({active}:{active:boolean}) {
    setModal(null);
    setNotice('Ждём подтверждение платежа от Telegram…');
    for (let attempt = 0; attempt < 8; attempt++) {
-    const payment = await giftPaymentRequest<{status:string}>('/api/gifts/status',{id});
+    const payment = await starPaymentRequest<{status:string}>('/api/gifts/status',{id});
     if (payment.status === 'paid' || payment.status === 'refunded') {
      setNotice(payment.status === 'paid' ? 'Подарок появился на стенде.' : 'Платёж возвращён.');
      setRefresh(value => value + 1);
@@ -147,7 +147,7 @@ export function GiftsScreen({active}:{active:boolean}) {
   }
  }
 
- const unavailable = !giftPaymentAvailable() ? 'Подарки можно отправлять в приложении Telegram.'
+ const unavailable = !starPaymentsAvailable() ? 'Подарки можно отправлять в приложении Telegram.'
   : !catalog?.paymentsEnabled ? 'Оплата пока недоступна.' : '';
  const changingPage = Boolean(wall && wall.page !== page);
  return <section className="gifts-screen" aria-labelledby="gifts-title">

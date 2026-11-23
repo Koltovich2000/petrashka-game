@@ -35,23 +35,27 @@ export const tasks={...activeTasks,...legacyTasks};
 type ActiveTask=keyof typeof activeTasks;
 export type TaskId=keyof typeof tasks;
 export type DailyProgress={
- day:number;rules?:2;ids:TaskId[];counts:Partial<Record<TaskId,number>>;
+ day:number;rules?:2|3;ids:TaskId[];counts:Partial<Record<TaskId,number>>;
  actions:string[];
 };
 export type DailyReward={day:number;id:TaskId};
 
 const hour=3_600_000;
 const dayMs=24*hour;
+const dailyWindow=12*hour;
 const moscowNoon=9*hour; // 12:00 in Moscow is 09:00 UTC.
-export const dailyDay=(time:number)=>Math.floor((time-moscowNoon)/dayMs);
+// Keep existing noon IDs and earned rewards. Midnight uses the following half-integer ID.
+export const dailyDay=(time:number)=>Math.floor((time-moscowNoon)/dailyWindow)/2;
 export const dailyStart=(day:number)=>day*dayMs+moscowNoon;
-export const nextDailyReset=(time:number)=>dailyStart(dailyDay(time)+1);
+export const dailyEnd=(day:number)=>dailyStart(day)+dailyWindow;
+export const nextDailyReset=(time:number)=>dailyEnd(dailyDay(time));
 const tierTasks:readonly (readonly ActiveTask[])[]=[
  ['bathStart','petTen','computerOnce','ballReturns','toiletVisit'],
  ['differentActions','computerThree','noodlesTwice','wakeBeforeTen'],
  ['computerFive','dumbbellSessions','balancedStats'],
 ];
 const noodlePrice=FOOD.find(item=>item.id==='noodles')!.price;
+const isBeforeTen=(day:number,time:number)=>!Number.isInteger(day)&&time<dailyStart(day)+10*hour;
 
 export function newDaily(day:number,game:Game,now:number):DailyProgress{
  const previous=game.daily&&game.daily.day<day?game.daily.ids:[];
@@ -59,11 +63,11 @@ export function newDaily(day:number,game:Game,now:number):DailyProgress{
  const ids=tierTasks.map(tier=>{
   const available=tier.filter(id=>(id!=='dumbbellSessions'||game.furniture.dumbbells)&&
    (id!=='noodlesTwice'||availableMoney>=noodlePrice*activeTasks.noodlesTwice.target)&&
-   (id!=='wakeBeforeTen'||now<dailyStart(day)+22*hour));
-  const index=((day%available.length)+available.length)%available.length;
+   (id!=='wakeBeforeTen'||isBeforeTen(day,now)));
+  const index=((day*2%available.length)+available.length)%available.length;
   return [...available.slice(index),...available.slice(0,index)].find(id=>!previous.includes(id))??available[index];
  });
- return {day,rules:2,ids,counts:{},actions:[]};
+ return {day,rules:3,ids,counts:{},actions:[]};
 }
 
 function progressTask(game:Game,id:ActiveTask,amount=1){
@@ -85,10 +89,16 @@ const replacements:Partial<Record<TaskId,ActiveTask>>={
 
 export function updateDaily(game:Game,now:number):Game{
  const previous=game.daily,day=dailyDay(now);
- if(previous?.day===day&&previous.rules===2)return game;
+ if(previous?.day===day&&previous.rules===3)return game;
  const daily=newDaily(day,game,now);
  const next={...game,daily};
  if(previous?.day!==day)return next;
+ if(previous.rules===2){
+  const canKeepWake=!Number.isInteger(day)||(previous.counts.wakeBeforeTen??0)>=tasks.wakeBeforeTen.target
+   ||game.dailyRewards?.some(reward=>reward.day===day&&reward.id==='wakeBeforeTen');
+  const ids=canKeepWake?previous.ids:previous.ids.map(id=>id==='wakeBeforeTen'?daily.ids[tasks[id].tier]:id);
+  return {...game,daily:{...previous,ids,rules:3}};
+ }
 
  // Completed tasks retain their promised rewards and occupy their original difficulty slot.
  const transfers:{id:ActiveTask;count:number}[]=[];
@@ -130,8 +140,7 @@ export function recordDailyPet(game:Game,time:number){
 export function recordDailyWake(game:Game,time:number){
  if(game.daily?.day!==dailyDay(time))return game;
  const next=recordDailyAction(game,'wake',time);
- const sinceNoon=time-dailyStart(dailyDay(time));
- return sinceNoon>=12*hour&&sinceNoon<22*hour?progressTask(next,'wakeBeforeTen'):next;
+ return isBeforeTen(game.daily.day,time)?progressTask(next,'wakeBeforeTen'):next;
 }
 
 export function recordDailyActivity(game:Game,activity:string,at:number){

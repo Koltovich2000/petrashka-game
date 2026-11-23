@@ -42,7 +42,7 @@
  background:linear-gradient(145deg,#202a55,#161b3a 75%);
  box-shadow:inset 0 0 0 2px #3b497d,0 5px 0 #090e26,0 12px 30px #03071ab3
 }
-.poll-dialog #poll-title{
+.poll-dialog .poll-title{
  position:absolute;top:-15px;left:50%;transform:translateX(-50%);justify-content:center;
  width:max-content;max-width:calc(100% - 14px);gap:5px;padding:4px 8px;
  border:2px solid #b68bdf;border-radius:8px;
@@ -51,7 +51,7 @@
  box-shadow:inset 0 0 0 1px #845ca4,0 3px #241b42
 }
 .poll-card .game-icon{width:18px;height:18px}
-.poll-card h2 .game-icon:last-child{transform:scaleX(-1)}
+.poll-card h2 .game-icon+.game-icon{transform:scaleX(-1)}
 .poll-dialog button.event-close:not(.mascot):not(.mini-stats button){
  position:absolute;top:8px;right:9px;min-width:30px;width:30px;height:29px;font-size:21px;line-height:1
 }

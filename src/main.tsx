@@ -1,9 +1,12 @@
+import {NotificationSettings} from './NotificationSettings';
 import {beds} from './property';
 import {Shop} from './Shop';
 import {activityReason,activities,computerXP,isLocation,type ActivityKind,type Location} from './activities';
 import {TUTORIAL,type FoodId} from './balance';
 import {PlayerBar} from './PlayerBar';
 import {DailyNotebook,WorldNotice} from './GameEvents';
+import {sectionGuide,TourDialog,TutorialSpotlight} from './TutorialGuide';
+import {isTourSection,type TourSection} from './tutorial';
 import {hairWetness} from './hair';
 import {GameIcon} from './GameIcon';
 import {Intro} from './Intro';
@@ -47,7 +50,16 @@ function App({profile}: {profile?:TelegramProfile}){
  const [screen,setScreen]=useState<typeof tabs[number]['id']>('room');
  const [notebook,setNotebook]=useState(false);
  const [adminOpen,setAdminOpen]=useState(false);
- const {game,current:ref,ready,error,commit,send,key,world,needsCharacterName,nameError,clearNameError}=useGameState(profile,locationRef);
+ const {game,current:ref,ready,error,commit,send,key,world,hospitalPaymentPending,hospitalAds,notifications,needsCharacterName,nameError,clearNameError}=useGameState(profile,locationRef);
+ const shell=useRef<HTMLDivElement>(null);
+ const [tourDialog,setTourDialog]=useState<TourSection|null>(null);
+ const [tourBusy,setTourBusy]=useState(false);
+ const [tourError,setTourError]=useState('');
+ const tourSection=isTourSection(game.tourSection)?game.tourSection:undefined;
+ const inCareTutorial=game.introCompleted&&game.tutorial<TUTORIAL.done;
+ const onboarding=inCareTutorial||Boolean(tourSection);
+ const guideActive=onboarding&&!world?.paused&&!adminOpen;
+ const openTourDialog=guideActive&&tourDialog===tourSection?tourSection:undefined;
  const closet=game.closet??starterCloset();
  const level=playerLevel(game.economy.xp);
  const wetness=hairWetness(game);
@@ -59,7 +71,7 @@ function App({profile}: {profile?:TelegramProfile}){
   const current=ref.current;
   if(current.health===0)return;
   const target=event.target as Element;
-  if(screen==='range'||screen==='gifts'||target.closest('.player-bar,.world-events,.event-dialog,.bottom-nav,.locations,.range-tab,.cancel-activity,.wake-button,.sound-toggle,.dev-tools,.dev-tools-toggle,.bath-sponge,.scene-pass-ball,.room-dog,.dog-care-panel'))return;
+  if(screen==='range'||screen==='gifts'||target.closest('.player-bar,.world-events,.event-dialog,.bottom-nav,.locations,.range-tab,.cancel-activity,.sleep-start,.sleep-controls,.object-bed,.sound-toggle,.dev-tools,.dev-tools-toggle,.bath-sponge,.scene-pass-ball,.room-dog,.night-dog,.dog-care-panel'))return;
   const kind=current.roomAction?.kind;
   if(kind==='bath'){event.preventDefault();event.stopPropagation();return;}
   const text=kind==='toilet'?'Ваш персонаж в туалете':kind==='tray'?'Ваш персонаж проверяет лоток':
@@ -125,7 +137,10 @@ function App({profile}: {profile?:TelegramProfile}){
   if(!update||update.state.cares===update.before.cares)return;
   const {before,state}=update;
   setEatenFood(action==='feed'?dish:null);
-  if(action==='sleep')changeLocation('room');
+  if(action==='sleep'){
+   setActivityNotice(null);
+   changeLocation('room');
+  }
   haptic();
   if(action==='feed')playRoomSound('eating');
   else sound(action);
@@ -170,14 +185,47 @@ function App({profile}: {profile?:TelegramProfile}){
   if(!update.before.introCompleted)setToast('Первый день в Москве');
   window.scrollTo(0,0);
  }
- async function hospitalNotice(notice:number,discharge:boolean){
-  const result=await send({kind:discharge?'discharge':'notice',notice});
-  if(discharge&&result&&!result.state.hospital){
+ const hospitalized=Boolean(game.hospital);
+ const wasHospitalized=useRef(false);
+ useEffect(()=>{
+  if(wasHospitalized.current&&!hospitalized){
    changeLocation('room');setScreen('room');setHelp(false);setMotionBusy(false);setEatenFood(null);setEffect('');setGain('');setToast('');
   }
+  wasHospitalized.current=hospitalized;
+ },[hospitalized]);
+ async function changeNotifications(enabled:boolean){
+  return Boolean(await send({kind:'notifications',enabled}));
+ }
+ async function payHospitalDebt(startedAt:number,cost:number,balance:number){
+  const result=await send({kind:'discharge',startedAt,cost,balance});
+  return Boolean(result&&!result.state.hospital);
+ }
+ function openTab(tab:typeof tabs[number]['id']){
+  if(onboarding&&(world?.paused||inCareTutorial||tab!==tourSection))return;
+  setScreen(tab);
+  if(tourSection){setTourError('');setTourDialog(tab);}
+ }
+ function openNotebook(){
+  if(onboarding&&(world?.paused||tourSection!=='tasks'))return;
+  setNotebook(true);
+  if(tourSection){setTourError('');setTourDialog('tasks');}
+ }
+ async function continueTour(){
+  if(!openTourDialog||tourBusy)return;
+  setTourBusy(true);setTourError('');
+  try{
+   const update=await send({kind:'tourNext',section:openTourDialog});
+   if(!update||update.state.tourSection===openTourDialog){
+    setTourError('Не удалось сохранить шаг. Нажми ещё раз.');
+    return;
+   }
+   if(update.state.tourSection==='tasks')setScreen('room');
+   setTourDialog(null);
+  }finally{setTourBusy(false);}
  }
  if(!ready)return <main className="app"><p role="status">{error||'Загружаем твоё сохранение…'}</p>{error&&<button onClick={()=>void send({kind:'sync'})}>Повторить</button>}</main>;
- const announcements=world&&playerId&&<WorldNotice world={world} playerId={playerId} suspended={adminOpen} onVote={async(pollId,choice)=>Boolean(await send({kind:'vote',pollId,choice}))}/>;
+ const announcements=world&&playerId&&<WorldNotice world={world} playerId={playerId}
+  suspended={adminOpen||(!world.paused&&onboarding)} onVote={async(pollId,choice)=>Boolean(await send({kind:'vote',pollId,choice}))}/>;
  const dashboard=profile?.isAdmin&&<Suspense fallback={null}><AdminDashboard token={profile.gameToken} onOpenChange={setAdminOpen}/></Suspense>;
  if(!game.introCompleted||needsCharacterName)return <>{announcements}
   <div inert={world?.paused&&!needsCharacterName}>
@@ -187,8 +235,13 @@ function App({profile}: {profile?:TelegramProfile}){
   </div>
   {dashboard&&<div className="modern admin-entry">{dashboard}</div>}
  </>;
- if(game.hospital)return <>{announcements}<div inert={world?.paused}><HospitalScreen game={game} hospital={game.hospital} error={error} onNotice={hospitalNotice}/></div>{dashboard&&<div className="modern admin-entry">{dashboard}</div>}</>;
- return <div className={`game-shell modern${activityBusy?' activity-busy':''}`} onClickCapture={noticeOnClick}>
+ if(game.hospital)return <>{announcements}<div inert={world?.paused}><HospitalScreen game={game} hospital={game.hospital} error={error}
+  paymentPending={hospitalPaymentPending} ads={hospitalAds} onPayDebt={payHospitalDebt}
+  onStartAd={async startedAt=>(await send({kind:'hospitalAdStart',startedAt}))?.hospitalAdAttempt}
+  onCancelAd={async attempt=>{await send({kind:'hospitalAdCancel',attempt});}}
+  onSync={()=>send({kind:'sync'})}/></div>{dashboard&&<div className="modern admin-entry">{dashboard}</div>}</>;
+ return <div ref={shell} className={`game-shell modern${activityBusy?' activity-busy':''}`}
+  data-guided={guideActive&&!openTourDialog||undefined} onClickCapture={noticeOnClick}>
  {activityBusy&&activityNotice&&<div key={activityNotice.id} className="activity-notice" role="status"
   data-below={activityNotice.y<100} style={{left:activityNotice.x,top:activityNotice.y}}
   onAnimationEnd={()=>setActivityNotice(notice=>notice?.id===activityNotice.id?null:notice)}>{activityNotice.text}</div>}
@@ -203,17 +256,18 @@ function App({profile}: {profile?:TelegramProfile}){
    onChange={update=>{if(localAdmin)commit(update(ref.current));}}/>
  </Suspense>}
  <div className="game-header">
-  <PlayerBar name={parseCharacterName(game.characterName)??defaultCharacterName} level={level} xp={game.economy.xp} balance={game.economy.balance} wetness={wetness} onHelp={()=>setHelp(true)} onTasks={screen==='room'?()=>setNotebook(true):undefined} taskReward={Boolean(game.dailyRewards?.length)}/>
+  <PlayerBar name={parseCharacterName(game.characterName)??defaultCharacterName} level={level} xp={game.economy.xp} balance={game.economy.balance} wetness={wetness} onHelp={()=>setHelp(true)} onTasks={screen==='room'?openNotebook:undefined} taskReward={Boolean(game.dailyRewards?.length)}/>
   {announcements}
  </div>
- {notebook&&<DailyNotebook game={game} serverNow={world?.now} onClose={()=>setNotebook(false)}
+ {notebook&&(!onboarding||guideActive)&&<DailyNotebook game={game} serverNow={world?.now} onClose={()=>setNotebook(false)}
   onClaim={async reward=>{
    const result=await send({kind:'dailyClaim',...reward});
    return Boolean(result&&!result.state.dailyRewards?.some(item=>item.day===reward.day&&item.id===reward.id));
   }}/>}
+ {openTourDialog&&<TourDialog section={openTourDialog} busy={tourBusy} error={tourError} onContinue={()=>void continueTour()}/>}
  <div className="game-pages" inert={world?.paused}>{tabs.map(tab=><main key={tab.id} hidden={screen!==tab.id} className="app game-page" data-screen={tab.id}>
   {tab.id==='room'&&<>
-   <HomeScreen location={location} onLocationChange={changeLocation} active={screen==='room'} game={game} outfit={closet.outfit} effect={effect} gain={gain} eatenFood={eatenFood} motionBusy={motionBusy} interact={interact} setMotionBusy={setMotionBusy} onWake={()=>void send({kind:'wake'})} onActivity={roomActivity} onCancelActivity={cancelCurrentActivity} onWashStroke={washStroke} onBallReturn={ballReturned} onFeedDog={()=>void send({kind:'feedDog'})} onMove={(id,x,y)=>void send({kind:'move',id,x,y})}/>
+   <HomeScreen location={location} onLocationChange={changeLocation} active={screen==='room'} wallTime={world?.now??Date.now()} game={game} outfit={closet.outfit} effect={effect} gain={gain} eatenFood={eatenFood} motionBusy={motionBusy} interact={interact} setMotionBusy={setMotionBusy} onWake={()=>void send({kind:'wake'})} onActivity={roomActivity} onCancelActivity={cancelCurrentActivity} onWashStroke={washStroke} onBallReturn={ballReturned} onFeedDog={()=>void send({kind:'feedDog'})} onMove={(id,x,y)=>void send({kind:'move',id,x,y})} guideRoot={guideActive&&inCareTutorial?shell:undefined}/>
   </>}
   {tab.id==='wardrobe'&&<Wardrobe closet={closet} balance={game.economy.balance} level={level} wetness={wetness} onSelect={selectClothing}/>}
   {tab.id==='shop'&&<Shop game={game} onAdoptDog={async dogName=>{
@@ -225,12 +279,14 @@ function App({profile}: {profile?:TelegramProfile}){
   {tab.id==='range'&&screen==='range'&&<RangeScreen outfit={closet.outfit} wetness={wetness}/>}
   {tab.id==='gifts'&&<GiftsScreen active={screen==='gifts'}/>}
  </main>)}</div>
- <nav className="bottom-nav" aria-label="Разделы игры"><div>{tabs.map(tab=><button key={tab.id} className={tab.id==='range'?'range-tab':undefined} disabled={game.tutorial<TUTORIAL.done&&(tab.id==='wardrobe'||tab.id==='shop')} aria-current={screen===tab.id?'page':undefined} onClick={()=>setScreen(tab.id)}>
+ <nav className="bottom-nav" aria-label="Разделы игры"><div>{tabs.map(tab=><button key={tab.id} data-guide-tab={tab.id} className={tab.id==='range'?'range-tab':undefined} disabled={onboarding&&(world?.paused||tab.id!==tourSection)} aria-current={screen===tab.id?'page':undefined} onClick={()=>openTab(tab.id)}>
   <GameIcon name={tab.id}/>{tab.label}
  </button>)}</div></nav>
+ {guideActive&&tourSection&&!openTourDialog&&<TutorialSpotlight root={shell} step={sectionGuide(tourSection)}/>}
  <div className={'toast '
 +(toast||error?'visible':'')} role="status">{error||toast}</div>
- {help&&<div className="overlay" onClick={()=>setHelp(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Как играть"><button className="round close" autoFocus onClick={()=>setHelp(false)}>✕</button><h2>Забота — это просто 💜</h2><p>Под комнатой можно переключать локации. Коротко нажми на голову, живот, руки, ноги или ступни — Петрашка отреагирует. Правая и левая стороны считаются со стороны персонажа. Чтобы погладить, проведи пальцем или мышью по голове туда и обратно. Зажми Петрашку ниже головы и потяни: он испугается и начнёт раскачиваться. Отпусти — он упадёт на живот, встанет и вернётся в центр. Пока он спит или без сознания, поднимать его нельзя. Падение не отнимает здоровье.</p><p>Корми, гладь, мой Петрашку, играй с ним и укладывай спать. Сон продолжается до кнопки «Разбудить». Во сне потребности заморожены, скорость восстановления энергии зависит от кровати.</p><p>За 10 минут бодрствования сытость и энергия падают на 0,75 пункта, настроение и гигиена — на 0,5. За одно отсутствие учитываются максимум 12 часов. При длительном истощении здоровье теряется на 2 в час после первых двух часов.</p><p>При гигиене ≤50 мокнут штаны; ≤20 появляется запах; ≤10 — какашки. Движение мочалкой туда и обратно даёт +1 к гигиене. В прихожей коснись мяча в воздухе или на полу, чтобы вернуть его. Каждый возврат даёт +1 к настроению. Оба занятия можно продолжать при 100% и остановить кнопкой «Закончить». Начало мытья стоит 2 энергии, начало игры в мяч — 10 энергии. За компьютером в комнате Петрашка играет 10 минут и получает до {activities.computer.mood} пунктов настроения и {computerXP} XP.</p><p>Показатели над комнатой показывают текущее состояние Петрашки. Гардероб доступен снизу: пять категорий, по десять вещей. Каждое третье поглаживание даёт +1 настроения до 70. Перезарядка: кормление и мячик — 30 сек. Сон доступен без перезарядки. Перезарядки сохраняются после закрытия игры.</p><p>Время идёт и без тебя. При здоровье 0% Петрашка попадает в больницу. Лечение стоит {rubles(hospitalRules.rate)} за полный час.</p>{playerId&&<p className="muted">Твой Telegram ID: <strong>{playerId}</strong></p>}<p className="muted">{profile?'Прогресс хранится на сервере и привязан к твоему аккаунту Telegram.':'В браузере прогресс и тестовая госпитализация сохраняются на этом устройстве.'}</p></section></div>}</div>;
+ {profile&&notifications?.configured&&!notifications.prompted&&!onboarding&&!world?.paused&&!help&&<div className="overlay"><section className="modal" role="dialog" aria-modal="true" aria-label="Разрешить уведомления"><NotificationSettings status={notifications} onChange={changeNotifications} offer/></section></div>}
+ {help&&<div className="overlay" onClick={()=>setHelp(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Как играть"><button className="round close" autoFocus onClick={()=>setHelp(false)}>✕</button>{profile&&notifications&&<NotificationSettings status={notifications} onChange={changeNotifications}/>}<h2>Забота — это просто 💜</h2><p>Под комнатой можно переключать локации. Коротко нажми на голову, живот, руки, ноги или ступни — Петрашка отреагирует. Правая и левая стороны считаются со стороны персонажа. Чтобы погладить, проведи пальцем или мышью по голове туда и обратно. Зажми Петрашку ниже головы и потяни: он испугается и начнёт раскачиваться. Отпусти — он упадёт на живот, встанет и вернётся в центр. Пока он спит или без сознания, поднимать его нельзя. Падение не отнимает здоровье.</p><p>Корми, гладь, мой Петрашку, играй с ним и укладывай спать. После обучения кнопка «Спать» доступна в любой комнате. Она прерывает текущее занятие. Сон продолжается до кнопки «Разбудить». Во сне потребности заморожены, скорость восстановления энергии зависит от кровати.</p><p>За 10 минут бодрствования сытость и энергия падают на 0,75 пункта, настроение и гигиена — на 0,5. За одно отсутствие учитываются максимум 12 часов. При длительном истощении здоровье теряется на 2 в час после первых двух часов.</p><p>При гигиене ≤50 мокнут штаны; ≤20 появляется запах; ≤10 — какашки. Движение мочалкой туда и обратно даёт +1 к гигиене. В прихожей коснись мяча в воздухе или на полу, чтобы вернуть его. Каждый возврат даёт +1 к настроению. Оба занятия можно продолжать при 100% и остановить кнопкой «Закончить». Начало мытья стоит 2 энергии, начало игры в мяч — 10 энергии. За компьютером в комнате Петрашка играет 10 минут и получает до {activities.computer.mood} пунктов настроения и {computerXP} XP.</p><p>Показатели в комнате показывают текущее состояние Петрашки. Гардероб доступен снизу: пять категорий, по десять вещей. Каждое полное поглаживание туда и обратно даёт +1 к настроению до 70%. Перезарядка: кормление и мячик — 30 сек. Сон доступен без перезарядки. Перезарядки сохраняются после закрытия игры.</p><p>Время идёт и без тебя. При здоровье 0% Петрашка попадает в больницу. Лечение стоит {rubles(hospitalRules.rate)} за полный час.</p>{playerId&&<p className="muted">Твой Telegram ID: <strong>{playerId}</strong></p>}<p className="muted">{profile?'Прогресс хранится на сервере и привязан к твоему аккаунту Telegram.':'В браузере прогресс и тестовая госпитализация сохраняются на этом устройстве.'}</p></section></div>}</div>;
 }
 function TelegramEntry(){
  const [profile,setProfile]=useState<TelegramProfile>();

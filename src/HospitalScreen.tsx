@@ -1,10 +1,10 @@
 import {useEffect,useRef,useState} from 'react';
 import {rubles} from './economy';
-import {FurnitureArt} from './FurnitureArt';
 import type {Game} from './game';
-import {hospitalRules,type Hospital} from './hospital';
+import {hospitalQuote,hospitalRules,type Hospital} from './hospital';
 import {PixelAvatar} from './PixelAvatar';
 import {defaultOutfit} from './wardrobe';
+import {hospitalAdController,type HospitalAds} from './hospitalAds';
 import './hospital.css';
 
 function HospitalScene(){
@@ -35,57 +35,104 @@ function HospitalScene(){
  </svg>;
 }
 
-function SoldAsset({asset}:{asset:Hospital['sales'][number]}){
- if(asset.kind==='furniture')return <FurnitureArt kind={asset.id}/>;
- if(asset.kind==='clothing'){
-  const crops={top:'23 46 54 29',pants:'28 71 44 22',shoes:'24 87 52 17',hat:'17 -5 66 42',accessory:'24 13 54 63'};
-  return <PixelAvatar outfit={{...defaultOutfit,[asset.category]:asset.index}} viewBox={crops[asset.category]}/>;
- }
- return <svg viewBox="0 0 80 38" aria-hidden="true"><path fill="#acc4e0" stroke="#252743" strokeWidth="3" d="M4 5H12V17H74V34H66V30H12V34H4z"/><path fill="#d5e0ee" d="M12 16H31V24H12z"/><path fill="#687ed4" d="M32 17H73V25H32z"/></svg>;
-}
-
 function durationLabel(ms:number){
  const minutes=Math.floor(ms/60_000);
- return minutes<60?`${minutes} мин.`:`${Math.floor(minutes/60)} ч. ${minutes%60} мин.`;
+ const days=Math.floor(minutes/1440);
+ const hours=Math.floor(minutes/60)%24;
+ return [days>0&&days+' д.',hours>0&&hours+' ч.',minutes%60+' мин.'].filter(Boolean).join(' ');
 }
 
-export function HospitalScreen({game,hospital,error,onNotice}:{game:Game;hospital:Hospital;error:string;onNotice:(notice:number,discharge:boolean)=>Promise<void>}){
+export function HospitalScreen({game,hospital,error,paymentPending,ads,onPayDebt,onStartAd,onCancelAd,onSync}:{
+ game:Game;hospital:Hospital;error:string;paymentPending:boolean;
+ ads?:HospitalAds;
+ onPayDebt:(startedAt:number,cost:number,balance:number)=>Promise<boolean>;
+ onStartAd:(startedAt:number)=>Promise<string|undefined>;
+ onCancelAd:(attempt:string)=>Promise<void>;
+ onSync:()=>Promise<unknown>;
+}){
  const dialog=useRef<HTMLDialogElement>(null);
+ const inProgress=useRef(false);
  const [busy,setBusy]=useState(false);
- const sale=hospital.sales[hospital.notice-1];
- const summary=hospital.notice>hospital.sales.length;
- const title=summary?'Петрашка снова дома!':sale?'Пришлось продать имущество!':'Петрашка попал в больницу!';
+ const [message,setMessage]=useState('');
+ const quote=hospitalQuote(game,hospital);
  useEffect(()=>{const modal=dialog.current;if(modal&&!modal.open)modal.showModal();},[]);
- async function next(){
-  if(busy)return;
-  setBusy(true);
-  await onNotice(hospital.notice,summary);
-  setBusy(false);
+
+ async function payDebt(){
+  if(inProgress.current||paymentPending)return;
+  inProgress.current=true;setBusy(true);setMessage('');
+  try{
+   if(!await onPayDebt(hospital.startedAt,hospital.cost,game.economy.balance))setMessage('Проверь расчёт и нажми ещё раз.');
+  }finally{
+   inProgress.current=false;setBusy(false);
+  }
  }
+
+ async function watchAd(){
+  if(inProgress.current||paymentPending||!ads||ads.pending)return;
+  inProgress.current=true;setBusy(true);setMessage('');
+  let attempt:string|undefined;
+  try{
+   const controller=await hospitalAdController(ads.blockId);
+   if(!dialog.current)return;
+   attempt=await onStartAd(hospital.startedAt);
+   if(!attempt){
+    setMessage('Не удалось начать просмотр. Попробуй ещё раз.');
+    return;
+   }
+   const modal=dialog.current;
+   if(!modal)return;
+   modal.close();
+   const result=await controller.show();
+   if(!result.done||result.error){
+    await onCancelAd(attempt);
+    setMessage('Просмотр не завершён. Попробуй ещё раз.');
+   }else await onSync();
+  }catch{
+   if(attempt)await onCancelAd(attempt);
+   setMessage('Реклама сейчас недоступна. Попробуй позже.');
+  }finally{
+   const modal=dialog.current;
+   if(modal?.isConnected&&!modal.open)modal.showModal();
+   inProgress.current=false;setBusy(false);
+  }
+ }
+
  return <main className="app hospital-screen">
   <h1>Больница</h1>
   <HospitalScene/>
   <dialog ref={dialog} className="hospital-dialog" aria-labelledby="hospital-title" onCancel={event=>event.preventDefault()}>
-   <h2 id="hospital-title">{title}</h2>
-   {summary?<>
-    <dl className="hospital-totals">
-     <div><dt>В больнице</dt><dd>{durationLabel(game.updated-hospital.startedAt)}</dd></div>
-     <div><dt>Стоимость лечения</dt><dd className="medical-cost">{rubles(hospital.cost)}</dd></div>
-     <div><dt>Списано с баланса</dt><dd className="medical-cost">−{rubles(hospital.balanceSpent)}</dd></div>
-     {hospital.debt>0&&<div><dt>Медицинский долг</dt><dd>{rubles(hospital.debt)}</dd></div>}
-     <div><dt>Осталось на балансе</dt><dd>{rubles(game.economy.balance)}</dd></div>
-    </dl>
-    {hospital.sales.length>0&&<ul className="hospital-sales">{hospital.sales.map((item,index)=><li key={index}>{item.name} · {rubles(item.price)}</li>)}</ul>}
-   </>:sale?<>
-    <p>Чтобы оплатить лечение Петрашки, больница была вынуждена продать некоторые его вещи.</p>
-    <div key={hospital.notice} className={'hospital-sold-art'+(busy?' leaving':'')}><SoldAsset asset={sale}/></div>
-    <p><strong>{sale.name}</strong> · продано за {rubles(sale.price)}</p>
-   </>:<>
-    <p>Состояние Петрашки стало критическим. Врачи подключили его к системе жизнеобеспечения и спасли ему жизнь. Но лечение оказалось платным!</p>
-    <p>{hospital.cost>0?<span className="medical-cost">Медицинские расходы · {rubles(hospital.cost)}</span>:<>Стоимость лечения · {rubles(hospitalRules.rate)} за полный час</>}</p>
-   </>}
+   <h2 id="hospital-title">Выписка Петрашки</h2>
+   <p>Лечение стоит {rubles(hospitalRules.rate)} за полный час. Выбери способ выписки.</p>
+   <dl className="hospital-totals">
+    <div><dt>В больнице</dt><dd>{durationLabel(game.updated-hospital.startedAt)}</dd></div>
+    {hospital.cost!==quote.due&&<div><dt>Стоимость лечения</dt><dd>{rubles(hospital.cost)}</dd></div>}
+    <div><dt>Долг к оплате</dt><dd className="medical-cost">{rubles(quote.due)}</dd></div>
+    <div><dt>Баланс сейчас</dt><dd>{rubles(game.economy.balance)}</dd></div>
+    <div><dt>Спишется с баланса за лечение</dt><dd>{rubles(quote.cash)}</dd></div>
+    <div><dt>Баланс после оплаты долга</dt><dd>{rubles(quote.balanceAfter)}</dd></div>
+   </dl>
+   {quote.sales.length>0&&<section aria-labelledby="hospital-sales-title">
+    <h3 id="hospital-sales-title">Вещи, которые продадутся при оплате долга</h3>
+    <ul className="hospital-sales">{quote.sales.map(item=><li key={item.kind==='clothing'?item.category+item.index:item.id}>
+     {item.name} · {rubles(item.price)}
+    </li>)}</ul>
+   </section>}
+   {quote.writtenOff>0&&<p>При оплате долга остаток в {rubles(quote.writtenOff)} спишется после выписки.</p>}
+   {(hospital.balanceSpent>0||hospital.sales.length>0)&&<p>
+    Ранее списано {rubles(hospital.balanceSpent)}{hospital.sales.length>0&&' и продано: '+hospital.sales.map(item=>item.name).join(', ')}.
+    Выписка без потерь вернёт эти деньги и вещи.
+   </p>}
+   {hospital.cost>0&&<p>Посмотри {hospitalRules.ads} рекламы, чтобы выписаться и сохранить баланс и вещи.</p>}
+   {!ads&&hospital.cost>0&&<p className="muted">Реклама пока недоступна.</p>}
+   {paymentPending&&<p role="status">Ждём подтверждение предыдущей оплаты от Telegram.</p>}
+   {ads?.pending&&!busy&&!paymentPending&&<p role="status">Ждём подтверждение просмотра. Если оно не придёт, попробуй ещё раз, когда кнопка станет доступна.</p>}
+   {message&&!paymentPending&&!ads?.pending&&<p role="status">{message}</p>}
    {error&&<p role="alert">{error}</p>}
-   <button type="button" className="hospital-next" disabled={busy} onClick={next}>{summary?'Забрать Петрашку домой':sale?'Далее':'Продолжить'}</button>
+   <div className="hospital-actions">
+    <button type="button" className="hospital-next" disabled={busy||paymentPending} onClick={()=>void payDebt()}>Оплатить долг</button>
+    {hospital.cost>0&&<button type="button" className="hospital-ad" disabled={busy||paymentPending||!ads||ads.pending}
+     onClick={()=>void watchAd()}>Смотреть рекламу · {ads?.watched??0}/{hospitalRules.ads}</button>}
+   </div>
   </dialog>
  </main>;
 }

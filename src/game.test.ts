@@ -26,16 +26,30 @@ test('истощение: два часа отсрочки, общий штра�
 });
 test('сон без таймера: заморозка, энергия, явное пробуждение',()=>{
  const g=act({...fresh(0),energy:20,food:55,hygiene:40},'sleep',0);
- assert.equal(advance(g,3_600_000,true).energy,36);
+ assert.equal(advance(g,3_600_000,true).energy,44);
+ const exhausted=act({...fresh(0),energy:0},'sleep',0);
+ const fullSleep=(4*60+10)*60_000;
+ assert.ok(advance(exhausted,fullSleep-1).energy<100);
+ assert.equal(parseSave(JSON.stringify(exhausted),fullSleep).energy,100);
  const s=advance(g,8*3600000,true);assert.deepEqual([s.energy,s.food,s.hygiene,s.health],[100,55,40,100]);assert.equal(s.sleepUntil,-1);
  const awake=wake(s,s.updated);assert.equal(awake.sleepUntil,null);assert.equal(advance(awake,s.updated+600000).food,54.25);
  assert.equal(parseSave(JSON.stringify(g),8*3600000).sleepUntil,-1);
 });
-test('сон не запускается закрытием игры и несовместим с другой активностью',()=>{
+test('сон запускается вручную из любой комнаты и прерывает незавершённое занятие',()=>{
  assert.equal(parseSave(JSON.stringify(fresh(0)),600000).sleepUntil,null);
  const playing=startActivity(fresh(0),'computer',0);
- assert.equal(act(playing,'sleep',0).sleepUntil,null);
+ const sleeping=runGameCommand(playing,{kind:'care',action:'sleep'},60_000,'bathroom');
+ assert.deepEqual([sleeping.sleepUntil,sleeping.roomAction,sleeping.energy,sleeping.food],[-1,null,90,96]);
+ const reloaded=parseSave(JSON.stringify(sleeping),600_000);
+ assert.deepEqual([reloaded.sleepUntil,reloaded.roomAction,reloaded.economy.xp],[-1,null,0]);
+ assert.equal(wake(reloaded,reloaded.updated).sleepUntil,null);
  assert.equal(startActivity(act(fresh(0),'sleep',0),'computer',0).roomAction,null);
+ assert.equal(act(fresh(0),'sleep',0).sleepUntil,-1);
+ assert.equal(act(beginTutorial(0),'sleep',0).sleepUntil,null);
+ assert.equal(act(rest(fresh(0),0),'sleep',0).restUntil,null);
+ const bathing=startActivity(fresh(0),'bath',0);
+ const afterBath=act(bathing,'sleep',BATH_READY_AT);
+ assert.deepEqual([afterBath.roomAction,afterBath.sleepUntil,afterBath.hairWashedAt],[null,-1,BATH_READY_AT]);
  const completed=advance(playing,600_000,true);
  assert.deepEqual([completed.energy,completed.food,completed.economy.xp],[90,96,16]);
  const later=advance(completed,1_200_000,true);
@@ -74,8 +88,29 @@ test('обучение из четырёх шагов даёт 2 уровень 
  assert.equal(g.economy.xp,75);
  g=act(cancelActivity(g,135_000),'sleep',135000);
  assert.deepEqual([g.tutorial,g.economy.balance,g.economy.xp,g.sleepUntil],[TUTORIAL.done,0,100,-1]);
+ assert.equal(g.tourSection,'room');
  assert.equal(xpProgress(g.economy.xp).level,2);
  assert.equal(parseSave(JSON.stringify(g),86400000).economy.xp,100);
+});
+test('знакомство с разделами идёт по порядку, сохраняется между входами и завершено один раз',()=>{
+ const ts=135_000;
+ let game=act({...beginTutorial(ts),tutorial:TUTORIAL.sleep},'sleep',ts);
+ const ack=(section:TourSection)=>{game=runGameCommand(game,{kind:'tourNext',section},ts,'room');};
+ ack('shop');
+ assert.equal(game.tourSection,'room');
+ for(const section of tourSections){
+  game=parseSave(JSON.stringify(game),ts);
+  assert.equal(game.tourSection,section);
+  ack(section);
+  const advanced=game.tourSection;
+  ack(section);
+  assert.equal(game.tourSection,advanced);
+ }
+ assert.equal(game.tourSection,undefined);
+ assert.equal(parseSave(JSON.stringify(game),ts).tourSection,undefined);
+ const returning=runGameCommand(fresh(ts),{kind:'tourNext',section:'room'},ts,'room');
+ assert.equal(returning.tourSection,undefined);
+ assert.equal(game.economy.balance,0);
 });
 test('кривая опыта и лимит 20 уровней',()=>{
  assert.equal(levelRequirement(2),128);assert.equal(levelRequirement(5),248);
@@ -281,7 +316,8 @@ test('уборка убирает только выбранную кучку и 
 test('компьютер: ресурсы, 10 минут, офлайн и точное завершение',()=>{
  const g={...fresh(0),mood:30,economy:{balance:245,xp:100}};const started=startActivity(g,'computer',0);assert.deepEqual([started.energy,started.food,started.hygiene],[90,96,99]);
  const done=parseSave(JSON.stringify(started),600000);assert.equal(done.mood,42);assert.equal(done.roomAction,null);assert.equal(done.food,96);
- assert.deepEqual(done.economy,{balance:245,xp:116});assert.deepEqual(parseSave(JSON.stringify(done),600000).economy,done.economy);assert.equal(act(started,'sleep',0).sleepUntil,null);
+ assert.deepEqual(done.economy,{balance:245,xp:116});assert.deepEqual(parseSave(JSON.stringify(done),600000).economy,done.economy);
+ assert.deepEqual(runGameCommand(started,{kind:'care',action:'sleep'},600_000,'room').economy,done.economy);
  assert.match(activityReason({...g,energy:14},'computer'),/15 энергии/);assert.match(activityReason({...g,food:9},'computer'),/10 сытости/);
 });
 test('мяч в прихожей: +1 за возврат без лимита, сохранение счёта и перезарядки',()=>{
@@ -391,7 +427,7 @@ test('отмена отдыха пропускает награду',()=>{
  assert.equal(advance(cancelActivity(rest(ready,0),1000),600000).energy,80);
 });
 
-test('кровать списывает цену один раз и ускоряет сон после загрузки', () => {
+test('кровать списывает цену один раз и сохраняет скорость восстановления после загрузки', () => {
  const initial = {...rich(), energy: 10};
  const bought = buyBed(initial, 'comfort', 0);
  assert.equal(bought.economy.balance, initial.economy.balance - 4_500);
@@ -428,16 +464,15 @@ test('поглаживание засчитывается только посл�
  assert.equal(move(0,0),false);
  assert.equal(move(0,-35),true);
 });
-test('поглаживания подряд дают +1 за три до 70, включая сохранение между нажатиями', () => {
+test('каждое поглаживание даёт +1 до 70, в том числе в старом сохранении', () => {
  const start = {...fresh(0), mood:68.5, energy:25, food:31, health:42, cooldowns:{...fresh(0).cooldowns,pet:15_000}};
- const twice = act(act(start,'pet',0),'pet',0);
- assert.equal(twice.mood,68.5);
- const third = act(parseSave(JSON.stringify(twice),0),'pet',0);
- assert.equal(third.mood,69.5);
- let state = third;
- for(let i=0;i<12;i++)state=act(state,'pet',0);
+ const loaded=parseSave(JSON.stringify({...start,petStrokes:2}),0);
+ const first=act(loaded,'pet',0);
+ assert.equal(first.mood,69.5);
+ let state=first;
+ for(let i=0;i<2;i++)state=act(state,'pet',0);
  assert.deepEqual([state.mood,state.energy,state.food,state.health],[70,25,31,42]);
- assert.equal(state.cares,15);
+ assert.equal(state.cares,3);
  assert.equal(act({...state,mood:80},'pet',0).mood,80);
 });
 
@@ -449,8 +484,18 @@ test('старое посещение туалета загружается бе
  assert.equal(advance(restored,60_000).roomAction,null);
 });
 
-import {advanceDogCare,dogFoodPrice,dogHungerLimit,dogMessInterval,dogReclaimPrice,dogSatiety,dogShelterAfter,newDogCare} from './dogSchedule';
+import {advanceDogCare,dogFoodPrice,dogHungerLimit,dogIsSleepingAt,dogMessInterval,dogReclaimPrice,dogSatiety,dogShelterAfter,newDogCare} from './dogSchedule';
 import {dogPointAt,dogRoute,measureDogRoute} from './dogNavigation';
+
+test('собака спит с 22:00 до 08:00 по Москве, включая смену даты',()=>{
+ for(const [stamp,asleep] of [
+  ['2026-11-23T21:59:59+03:00',false],
+  ['2026-11-23T19:00:00Z',true],
+  ['2026-11-24T00:00:00+03:00',true],
+  ['2026-11-24T07:59:59+03:00',true],
+  ['2026-11-24T05:00:00Z',false],
+ ] as const)assert.equal(dogIsSleepingAt(Date.parse(stamp)),asleep,stamp);
+});
 import {runGameCommand} from './gameCommands';
 
 test('собака оставляет след раз в четыре часа с общим пределом в четыре следа',()=>{
@@ -529,7 +574,7 @@ function withDaily(game:Game,ids:TaskId[]){
 test('дейлики: два Доширака, разные действия и выдача каждой награды ровно один раз',()=>{
  const noon=Date.UTC(2026,10,22,9);
  const day=dailyDay(noon);
- assert.equal(dailyDay(noon-1),day-1);
+ assert.equal(dailyDay(noon-1),day-.5);
  assert.equal(dailyDay(noon),day);
  const start=withDaily({...fresh(noon),economy:{balance:110,xp:100}},['noodlesTwice','differentActions']);
  const first=runGameCommand(start,{kind:'care',action:'feed',food:'noodles'},noon,'room');
@@ -541,10 +586,30 @@ test('дейлики: два Доширака, разные действия и 
  assert.equal(second.economy.balance,0);
  assert.deepEqual(second.dailyRewards,[{day,id:'noodlesTwice'}]);
  const claim={kind:'dailyClaim',id:'noodlesTwice',day} as const;
- const paid=runGameCommand(second,claim,dailyStart(day+1),'room');
- assert.equal(paid.daily?.day,day+1);
+ const midnight=dailyStart(day+.5);
+ const paid=runGameCommand(second,claim,midnight,'room');
+ assert.equal(paid.daily?.day,day+.5);
  assert.equal(paid.economy.balance,1000);
- assert.equal(runGameCommand(paid,claim,dailyStart(day+1),'room').economy.balance,1000);
+ assert.equal(runGameCommand(paid,claim,midnight,'room').economy.balance,1000);
+});
+
+test('задания обновляются в полдень и полночь, ранний подъём учитывается только до 10:00 МСК',()=>{
+ const noon=Date.UTC(2026,10,22,9),midnight=Date.UTC(2026,10,22,21),nextNoon=Date.UTC(2026,10,23,9);
+ const afternoon=withDaily(fresh(noon),['petTen','wakeBeforeTen']);
+ const started=runGameCommand(afternoon,{kind:'care',action:'pet'},noon,'room');
+ assert.equal(started.daily?.counts.petTen,1);
+ assert.equal(nextDailyReset(noon),midnight);
+ assert.equal(nextDailyReset(midnight),nextNoon);
+ const rotated=runGameCommand(started,{kind:'sync'},midnight,'room');
+ assert.equal(rotated.daily?.day,dailyDay(noon)+.5);
+ assert.deepEqual(rotated.daily?.counts,{});
+ assert.equal(runGameCommand(rotated,{kind:'sync'},nextNoon,'room').daily?.day,dailyDay(noon)+1);
+ const sleeping=withDaily({...fresh(midnight),sleepUntil:-1},['wakeBeforeTen']);
+ const wake=(at:number)=>runGameCommand(sleeping,{kind:'wake'},at,'room');
+ const ten=Date.UTC(2026,10,23,7);
+ assert.equal(wake(ten-1).daily?.counts.wakeBeforeTen,1);
+ assert.equal(wake(ten).daily?.counts.wakeBeforeTen,undefined);
+ assert.ok(!newDaily(dailyDay(noon),fresh(noon),noon).ids.includes('wakeBeforeTen'));
 });
 
 test('компьютер засчитывается только по завершении и в день завершения',()=>{
@@ -623,7 +688,8 @@ test('смена заданий сохраняет старые награды �
  assert.ok(eligible.includes('noodlesTwice')&&eligible.includes('dumbbellSessions'));
 });
 
-import {dailyDay,dailyStart,newDaily,type TaskId} from './dailyTasks';
+import {dailyDay,dailyStart,nextDailyReset,newDaily,type TaskId} from './dailyTasks';
+import {tourSections,type TourSection} from './tutorial';
 
 test('сытость собаки падает до нуля через 48 часов, ещё через сутки её забирают в приют',()=>{
  const initial=adoptDog({...fresh(0),economy:{balance:dogFoodPrice+dogReclaimPrice,xp:100}},'Шарик');

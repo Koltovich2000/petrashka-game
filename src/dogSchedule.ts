@@ -1,5 +1,6 @@
 import {parseCharacterName} from './characterName';
 import {isLocation,locationIds,type Location} from './activities';
+import {moscowMinuteOfDay} from './roomLighting';
 
 export const dogVisitDuration=18_000;
 const hour=3_600_000;
@@ -15,6 +16,11 @@ export type DogCare={
  name?:string;sheltered?:true;hungerShelterAt?:number;startedAt:number;seed:number;nextMessAt:number;
  lastFedAt:number;diedAt:number|null;messes:DogMess[];messSchedule?:typeof messScheduleVersion;
 };
+
+export function dogIsSleepingAt(wallTime:number){
+ const minutes=moscowMinuteOfDay(wallTime);
+ return minutes>=22*60||minutes<8*60;
+}
 
 export function dogVisitAt(now:number){
  const index=Math.floor(now/dogVisitDuration);

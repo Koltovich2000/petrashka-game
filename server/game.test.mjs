@@ -16,6 +16,16 @@ import {createAppServer} from './index.mjs';
 
 const hour=3_600_000;
 
+async function appRequest(server,url,body,headers={}){
+ const req=Readable.from(body===undefined?[]:[Buffer.from(JSON.stringify(body))]);
+ Object.assign(req,{url,method:body===undefined?'GET':'POST',headers:{'content-type':'application/json',...headers}});
+ const response={};
+ await server.listeners('request')[0](req,{
+  setHeader(){},writeHead(status){response.status=status;},end(raw){response.data=JSON.parse(raw);},
+ });
+ return response;
+}
+
 test('the game API authenticates players, applies server time, and commits billing and sales once',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'petrashka-medical-'));
  t.after(()=>rm(directory,{recursive:true,force:true}));
@@ -54,10 +64,9 @@ test('the game API authenticates players, applies server time, and commits billi
  const simultaneous=await Promise.all([request('123',{kind:'sync'}),request('123',{kind:'sync'})]);
  for(const {state} of simultaneous){
   assert.equal(state.hospital.cost,300);
-  assert.equal(state.hospital.balanceSpent,100);
-  assert.equal(state.hospital.debt,80);
-  assert.equal(state.hospital.sales.length,1);
-  assert.equal(state.closet.outfit.top,0);
+  assert.equal(state.hospital.balanceSpent,0);
+  assert.equal(state.hospital.sales.length,0);
+  assert.equal(state.closet.outfit.top,1);
  }
  const another=await request('456',{kind:'sync'},{legacySave:JSON.stringify(bought)});
  assert.equal(another.state.hospital,null);
@@ -66,18 +75,168 @@ test('the game API authenticates players, applies server time, and commits billi
 
  result=await request('123',{kind:'admin',values:{balance:99999}});
  assert.equal(result.code,403);
- assert.equal((await request('123',{kind:'sync'})).state.economy.balance,0);
- await request('123',{kind:'notice',notice:0});
- const repeats=await Promise.all([request('123',{kind:'notice',notice:1}),request('123',{kind:'notice',notice:1})]);
- assert.ok(repeats.every(reply=>reply.state.hospital.notice===2));
- result=await request('123',{kind:'discharge',notice:2});
- assert.equal(result.state.hospital,null);
- assert.equal(result.state.health,50);
- assert.equal(result.state.medicalDebt,80);
+ assert.equal((await request('123',{kind:'sync'})).state.economy.balance,100);
+ const settle={kind:'discharge',startedAt:origin,cost:300,balance:100};
+ const stale=await request('123',{...settle,cost:200});
+ assert.equal(stale.state.hospital.cost,300);
+ const repeats=await Promise.all([request('123',settle),request('123',settle)]);
+ assert.ok(repeats.every(({state})=>state.hospital===null&&state.health===50&&state.economy.balance===0&&state.medicalDebt===0));
  const stored=new DatabaseSync(databasePath);
- const kinds=stored.prepare("SELECT details FROM petrashka_medical_history WHERE player_id='123' ORDER BY rowid").all().map(row=>JSON.parse(row.details).type);
- assert.deepEqual(kinds,['admit','bill','sale','discharge']);
+ const history=stored.prepare("SELECT details FROM petrashka_medical_history WHERE player_id='123' ORDER BY rowid").all().map(row=>JSON.parse(row.details));
+ assert.deepEqual(history.map(event=>event.type),['admit','bill','sale','discharge']);
+ assert.equal(history.at(-1).writtenOff,80);
  stored.close();
+});
+
+test('a hospital Stars payment is bound to the payer and stay, survives restart and refunds a late charge',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'petrashka-hospital-stars-'));
+ const databasePath=join(directory,'game.sqlite');
+ const origin=Date.now();
+ let now=origin+24*hour;
+ const botToken='hospital-test-token';
+ const webhookSecret='hospital_test_secret_123456789012345';
+ const calls=[];
+ const options={botToken,game:{databasePath,databaseUrl:'',clock:()=>now},gifts:{webhookSecret,
+  botApi(method,data){
+   calls.push({method,data});
+   return method==='refundStarPayment'?true:'https://t.me/$test_hospital_invoice';
+  },
+ }};
+ const bought=applyClothing({...fresh(origin),economy:{balance:clothingPrice('top',1)+150,xp:500}},'top',1);
+ const store=await openGameStore(databasePath);
+ const payload='hospital:'+randomUUID(),secondPayload='hospital:'+randomUUID(),unapprovedPayload='hospital:'+randomUUID();
+ for(const [id,invoice,query] of [['123',payload,'query-1'],['456',secondPayload,'other-query'],['789',unapprovedPayload]]){
+  await store.change(id,()=>({state:{...bought,health:0,hospitalInvoice:{
+   id:invoice,startedAt:origin,issuedAt:now,checkout:query?{id:query,at:now}:undefined,
+  }},events:[]}));
+ }
+ await store.close();
+ let server=createAppServer(options);
+ t.after(async()=>{server.emit('close');await rm(directory,{recursive:true,force:true});});
+ const request=(url,body,headers)=>appRequest(server,url,body,headers);
+ const hook='/api/telegram/gifts-webhook';
+ const update=body=>request(hook,body,{'x-telegram-bot-api-secret-token':webhookSecret});
+ const game=(id,command={kind:'sync'})=>request('/api/game',{location:'room',command},{authorization:'Bearer '+issueGameSession(String(id),botToken,now)});
+ const checkout=(id,payload,query='query-1',total_amount=25)=>({pre_checkout_query:{id:query,from:{id},invoice_payload:payload,total_amount,currency:'XTR'}});
+ const paid=(id,payload,charge)=>({message:{from:{id},successful_payment:{
+  invoice_payload:payload,total_amount:25,currency:'XTR',telegram_payment_charge_id:charge,
+ }}});
+
+ assert.equal((await request('/api/hospital/invoice',{startedAt:origin})).status,404);
+ assert.equal((await update(checkout(789,unapprovedPayload))).data.ok,false);
+ assert.equal((await request(hook,checkout(123,payload))).status,403);
+ assert.equal((await update(checkout(456,payload))).data.ok,false);
+ assert.equal((await update(checkout(123,payload,'query-1',1))).data.ok,false);
+ assert.equal((await update(checkout(123,payload))).data.ok,true);
+ assert.equal((await update(checkout(123,payload))).data.ok,true);
+ assert.equal((await update(checkout(123,payload,'query-2'))).data.ok,false);
+ let current=(await game(123,{kind:'discharge',startedAt:origin,cost:2400,balance:150})).data;
+ assert.equal(current.hospitalPaymentPending,true);
+ assert.equal(current.state.hospital.cost,2400);
+ assert.equal(current.state.hospitalInvoice,undefined);
+
+ server.emit('close');
+ server=createAppServer(options);
+ const firstPayment=paid(123,payload,'charge-1');
+ const repeated=await Promise.all([update(firstPayment),update(firstPayment)]);
+ assert.ok(repeated.every(reply=>reply.status===200));
+ current=(await game(123)).data;
+ assert.equal(current.hospitalPaymentPending,false);
+ assert.equal(current.state.hospital,null);
+ assert.deepEqual(current.state.economy,bought.economy);
+ assert.deepEqual(current.state.closet,bought.closet);
+ assert.equal(current.state.hospitalReceipts,undefined);
+ assert.equal(calls.filter(call=>call.method==='refundStarPayment').length,0);
+
+ assert.equal((await update(checkout(456,secondPayload,'other-query'))).data.ok,true);
+ now+=4*60_000;
+ const paidWithRubles=(await game(456,{kind:'discharge',startedAt:origin,cost:2400,balance:150})).data.state;
+ assert.equal(paidWithRubles.hospital,null);
+ assert.equal(paidWithRubles.economy.balance,0);
+ assert.equal(paidWithRubles.closet.outfit.top,0);
+ const latePayment=paid(456,secondPayload,'charge-2');
+ assert.equal((await update(latePayment)).status,200);
+ assert.equal((await update(latePayment)).status,200);
+ assert.deepEqual(calls.filter(call=>call.method==='refundStarPayment'),[
+  {method:'refundStarPayment',data:{user_id:456,telegram_payment_charge_id:'charge-2'}},
+ ]);
+ assert.equal((await game(456)).data.state.economy.balance,0);
+});
+
+test('hospital discharge requires two distinct Adsun confirmations for the active stay',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'petrashka-hospital-ads-'));
+ const databasePath=join(directory,'game.sqlite');
+ const origin=1_700_000_000_000;
+ let now=origin+24*hour;
+ const botToken='hospital-ads-test-token';
+ const blockId='50001',secret='hospital_ads_test_secret_123456789';
+ const options={botToken,game:{databasePath,databaseUrl:'',clock:()=>now,
+  hospitalAdBlockId:blockId,hospitalAdRewardSecret:secret}};
+ const bought=applyClothing({...fresh(origin),economy:{balance:clothingPrice('top',1)+150,xp:500}},'top',1);
+ const store=await openGameStore(databasePath);
+ await store.change('123',()=>({state:{...bought,health:0},events:[]}));
+ await store.close();
+ let server=createAppServer(options);
+ t.after(async()=>{server.emit('close');await rm(directory,{recursive:true,force:true});});
+ const game=(command={kind:'sync'})=>appRequest(server,'/api/game',{location:'room',command},
+  {authorization:'Bearer '+issueGameSession('123',botToken,now)});
+ const start=()=>game({kind:'hospitalAdStart',startedAt:origin});
+ const reward=(timestamp=Math.floor(now/1000),overrides={})=>appRequest(server,'/api/hospital/ad-reward?'+
+  new URLSearchParams({key:secret,userid:'123',block:blockId,timestamp:String(timestamp),...overrides}));
+
+ assert.equal((await reward(undefined,{key:'invalid'})).status,403);
+ assert.equal((await reward(undefined,{block:'another'})).status,403);
+ assert.equal((await reward('invalid')).status,400);
+ assert.equal((await reward(undefined,{userid:'999'})).status,200);
+ assert.equal((await reward()).status,200);
+ assert.deepEqual((await game()).data.hospitalAds,{blockId,watched:0,pending:false});
+ assert.equal((await game({kind:'hospitalAdStart',startedAt:origin-1})).data.hospitalAdAttempt,undefined);
+
+ const starts=await Promise.all([start(),start()]);
+ const attempt=starts.find(reply=>reply.data.hospitalAdAttempt).data.hospitalAdAttempt;
+ assert.equal(starts.filter(reply=>reply.data.hospitalAdAttempt).length,1);
+ assert.equal((await game({kind:'hospitalAdCancel',attempt:'wrong-attempt'})).data.hospitalAds.pending,true);
+ assert.equal((await game({kind:'hospitalAdCancel',attempt})).data.hospitalAds.pending,false);
+ now+=15_000;
+ assert.equal((await reward()).status,200);
+ assert.equal((await game()).data.hospitalAds.watched,0);
+
+ assert.ok((await start()).data.hospitalAdAttempt);
+ now+=15_000;
+ const first=Math.floor(now/1000);
+ const repeated=await Promise.all([reward(first),reward(first)]);
+ assert.ok(repeated.every(reply=>reply.status===200));
+ assert.deepEqual((await game()).data.hospitalAds,{blockId,watched:1,pending:false});
+
+ server.emit('close');
+ server=createAppServer(options);
+ const current=(await game()).data;
+ assert.equal(current.hospitalAds.watched,1);
+ assert.equal(current.state.hospital.cost,2400);
+ assert.equal(current.state.hospitalAdProgress,undefined);
+ assert.equal(current.state.lastHospitalAdReward,undefined);
+
+ now+=1_000;
+ assert.ok((await start()).data.hospitalAdAttempt);
+ now+=15_000;
+ await reward(first);
+ await reward(Math.floor(now/1000)+60);
+ assert.equal((await game()).data.hospitalAds.watched,1);
+ const second=Math.floor(now/1000);
+ assert.equal((await reward(second)).status,200);
+ assert.equal((await reward(second)).status,200);
+ const discharged=(await game()).data;
+ assert.equal(discharged.state.hospital,null);
+ assert.equal(discharged.hospitalAds,undefined);
+ assert.equal(discharged.state.medicalDebt,0);
+ assert.deepEqual(discharged.state.economy,bought.economy);
+ assert.deepEqual(discharged.state.closet,bought.closet);
+ const db=new DatabaseSync(databasePath);
+ const history=db.prepare('SELECT details FROM petrashka_medical_history ORDER BY rowid').all().map(row=>JSON.parse(row.details));
+ assert.deepEqual(history.map(event=>event.type),['admit','bill','discharge']);
+ assert.equal(history.at(-1).method,'ads');
+ assert.equal(db.prepare("SELECT id FROM petrashka_players WHERE id='999'").get(),undefined);
+ db.close();
 });
 
 test('admin directory upgrades existing profiles and applies only authorized, idempotent changes',async t=>{
@@ -293,6 +452,30 @@ test('global pause and poll survive server reopen, while voting and its deadline
  assert.equal((await world(paused)).data.paused,true);
  now+=30*60_000;
  assert.equal((await game()).data.world.paused,true);
+
+ // Removing the final result does not republish a prior vote.
+ const removePoll=id=>({kind:'removePoll',id});
+ assert.equal((await request('/api/admin/world','222',removePoll(second.id))).status,403);
+ assert.equal((await world(removePoll('invalid-id'))).status,400);
+ assert.deepEqual((await world(removePoll(second.id))).data,{now,paused:true,poll:null});
+ assert.equal((await game(undefined,'333')).data.world.poll,null);
+
+ // An active poll can be cancelled and safely replaced, including in the same tick.
+ const third={...poll,id:randomUUID()};
+ assert.equal((await world(third)).data.poll.id,third.id);
+ assert.equal((await game({kind:'vote',pollId:third.id,choice:0})).status,200);
+ const removed=await Promise.all([world(removePoll(third.id)),world(removePoll(third.id))]);
+ assert.ok(removed.every(answer=>answer.status===200&&answer.data.poll===null&&answer.data.paused));
+ assert.equal((await game({kind:'vote',pollId:third.id,choice:0},'333')).status,409);
+ const fourth={...poll,id:randomUUID()};
+ assert.equal((await world(fourth)).data.poll.id,fourth.id);
+ assert.equal((await world(removePoll(third.id))).data.poll.id,fourth.id);
+ assert.equal((await world(removePoll(fourth.id))).data.poll,null);
+ now+=31*60_000;
+ server.emit('close');
+ server=createAppServer(options);
+ assert.deepEqual((await world()).data,{now,paused:true,poll:null});
+ assert.equal((await world({kind:'pause',paused:false})).data.paused,false);
 });
 
 test('character names are unique in concurrent requests and legacy conflicts keep player progress',async t=>{

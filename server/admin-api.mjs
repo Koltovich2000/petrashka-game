@@ -42,6 +42,7 @@ function playerCommand(body){
 
 function worldCommand(body){
  if(body?.kind==='pause'&&typeof body.paused==='boolean')return {kind:'pause',paused:body.paused};
+ if(body?.kind==='removePoll'&&typeof body.id==='string'&&operationId.test(body.id))return {kind:'removePoll',id:body.id};
  if(body?.kind!=='poll'||typeof body.id!=='string'||!operationId.test(body.id)||
   typeof body.question!=='string'||!Array.isArray(body.options)||body.options.length<2||
   body.options.length>pollLimits.options||!Number.isSafeInteger(body.minutes)||

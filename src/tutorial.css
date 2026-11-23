@@ -1,0 +1,46 @@
+.game-shell[data-guided]{touch-action:none}
+.tutorial-spotlight{
+ position:fixed;inset:0;z-index:90;pointer-events:none;overflow:hidden;
+ color:#fff5da;font-family:system-ui,sans-serif;
+}
+.tutorial-spotlight[data-waiting]{background:#090b1bb5}
+.tutorial-cutout{
+ position:absolute;box-sizing:border-box;border:2px solid #ffdc80;border-radius:12px;
+ box-shadow:0 0 0 100vmax #090b1bb5,0 0 12px #ffbd5ca6;
+}
+.tutorial-cutout[data-scene]{border-color:#ffdc8066}
+.tutorial-hint{
+ position:absolute;top:50%;left:50%;transform:translateX(-50%);
+ width:max-content;max-width:min(260px,calc(100% - 24px));padding:8px 11px;
+ border:1px solid #deb36a;border-radius:10px;background:#28213e;
+ box-shadow:0 3px 12px #090b1b8c;text-align:center;font-size:clamp(12px,3.3vw,15px);font-weight:750;
+}
+.tutorial-hint[data-above]{transform:translate(-50%,-100%)}
+.tutorial-hand{
+ position:absolute;width:37px;height:37px;margin:-4px 0 0 -19px;
+ filter:drop-shadow(1px 3px 2px #150b28b3);
+ animation:guide-tap 1.2s ease-in-out infinite;
+}
+.tutorial-hand .game-icon{width:100%;height:100%}
+.tutorial-hand[data-motion=drag]{animation:guide-drag 2s ease-in-out infinite}
+.tutorial-hand[data-motion=scrub]{animation:guide-scrub 2.4s ease-in-out infinite}
+@keyframes guide-tap{
+ 0%,100%{transform:translate(6px,9px) scale(1.05)}
+ 45%,65%{transform:translate(0,0) scale(.93)}
+}
+@keyframes guide-drag{
+ 0%,15%,100%{transform:translate(0,0);opacity:1}
+ 58%,76%{transform:translate(var(--guide-dx),var(--guide-dy));opacity:1}
+ 90%{transform:translate(var(--guide-dx),var(--guide-dy));opacity:0}
+ 91%,99%{opacity:0}
+}
+@keyframes guide-scrub{
+ 0%,12%,100%{transform:translate(0,0);opacity:1}
+ 35%,75%{transform:translate(var(--guide-dx),var(--guide-dy));opacity:1}
+ 55%{transform:translate(calc(var(--guide-dx) - 30px),var(--guide-dy))}
+ 90%{transform:translate(var(--guide-dx),var(--guide-dy));opacity:0}
+ 91%,99%{opacity:0}
+}
+@media(prefers-reduced-motion:reduce){.tutorial-hand[data-motion]{animation:none}}
+.tour-dialog #tour-description{margin:0;text-align:center;line-height:1.55;font-size:clamp(14px,4vw,16px)}
+.tour-dialog [role=alert]{margin:0;color:#ffb5b5;font-size:13px}

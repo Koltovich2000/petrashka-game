@@ -9,12 +9,13 @@ import {BALANCE,FOOD,TUTORIAL,tutorialRewards,legacyXP,type FoodId} from './bala
 import {statKeys,type PlayerStat} from './adminTypes';
 import {parseCharacterName} from './characterName';
 import type {DailyProgress,DailyReward} from './dailyTasks';
+import {isTourSection,tourSections,type TourSection} from './tutorial';
 export type Stat=PlayerStat;
 export type Action='feed'|'pet'|'sleep'|'heal'|'wash'|'play';
 export const LAST_INTRO_SCENE=3;
-export type Game=Record<Stat,number>&{daily?:DailyProgress;dailyRewards?:DailyReward[];characterName?:string;statLimits?:Partial<Record<Stat,number>>;introEdits?:Stat[];introScene?:number;hospital:Hospital|null;medicalDebt:number;protectedUntil:number;hairWashedAt:number|null;furnitureCosts:Partial<Record<keyof Furniture,number>>;bedPurchasePrice:number|null;dog:boolean;dogCare:DogCare|null;dogFood?:number;roomAction:RoomAction|null;floorMess:Partial<Record<Location,true>>;accidentActive:boolean;bed:keyof typeof beds;businesses:Businesses;furniture:Furniture;fitnessXP:number;training:{day:string;count:number};toiletBonusAt:number;version:4;economy:Economy;closet:Closet|null;introCompleted:boolean;rentPaid:boolean;cooldowns:Record<Action,number>;updated:number;born:number;sleepUntil:number|null;restUntil:number|null;baseClock:number;exhaustionClock:number;freeFoodAt:number;tutorial:number;cares:number;petStrokes:number};
+export type Game=Record<Stat,number>&{daily?:DailyProgress;dailyRewards?:DailyReward[];tourSection?:TourSection;characterName?:string;statLimits?:Partial<Record<Stat,number>>;introEdits?:Stat[];introScene?:number;hospital:Hospital|null;medicalDebt:number;protectedUntil:number;hairWashedAt:number|null;furnitureCosts:Partial<Record<keyof Furniture,number>>;bedPurchasePrice:number|null;dog:boolean;dogCare:DogCare|null;dogFood?:number;roomAction:RoomAction|null;floorMess:Partial<Record<Location,true>>;accidentActive:boolean;bed:keyof typeof beds;businesses:Businesses;furniture:Furniture;fitnessXP:number;training:{day:string;count:number};toiletBonusAt:number;version:4;economy:Economy;closet:Closet|null;introCompleted:boolean;rentPaid:boolean;cooldowns:Record<Action,number>;updated:number;born:number;sleepUntil:number|null;restUntil:number|null;baseClock:number;exhaustionClock:number;freeFoodAt:number;tutorial:number;cares:number};
 export const KEY='petrashka:v1';
-export const fresh=(now=Date.now()):Game=>({hospital:null,medicalDebt:0,protectedUntil:0,hairWashedAt:null,furnitureCosts:{},bedPurchasePrice:null,dog:false,dogCare:null,roomAction:null,floorMess:{},accidentActive:false,bed:'standard',businesses:{},furniture:{},fitnessXP:0,training:{day:'',count:0},toiletBonusAt:0,version:4,economy:{...newEconomy(),balance:0},closet:null,introCompleted:true,rentPaid:true,cooldowns:{feed:0,pet:0,sleep:0,heal:0,wash:0,play:0},health:100,food:100,mood:100,energy:100,hygiene:100,updated:now,born:now,sleepUntil:null,restUntil:null,baseClock:0,exhaustionClock:0,freeFoodAt:0,tutorial:TUTORIAL.done,cares:0,petStrokes:0});
+export const fresh=(now=Date.now()):Game=>({hospital:null,medicalDebt:0,protectedUntil:0,hairWashedAt:null,furnitureCosts:{},bedPurchasePrice:null,dog:false,dogCare:null,roomAction:null,floorMess:{},accidentActive:false,bed:'standard',businesses:{},furniture:{},fitnessXP:0,training:{day:'',count:0},toiletBonusAt:0,version:4,economy:{...newEconomy(),balance:0},closet:null,introCompleted:true,rentPaid:true,cooldowns:{feed:0,pet:0,sleep:0,heal:0,wash:0,play:0},health:100,food:100,mood:100,energy:100,hygiene:100,updated:now,born:now,sleepUntil:null,restUntil:null,baseClock:0,exhaustionClock:0,freeFoodAt:0,tutorial:TUTORIAL.done,cares:0});
 export const beginIntro=(now=Date.now()):Game=>({...fresh(now),introCompleted:false,rentPaid:false,tutorial:0});
 export const beginTutorial=(now=Date.now()):Game=>({...fresh(now),tutorial:0,food:55,energy:85,mood:75,hygiene:70,economy:{...newEconomy(),balance:0}});
 export const gameDay=(g:Game)=>1+Math.max(0,Math.floor((g.updated-g.born)/86_400_000));
@@ -43,7 +44,9 @@ export function tutorialReward(g:Game,step:number):Game{
  if(g.tutorial!==step)return g;
  const reward=tutorialRewards[step];
  if(!reward)return g;
- return {...g,tutorial:step+1,economy:{xp:g.economy.xp+reward.xp,balance:step===TUTORIAL.sleep?0:g.economy.balance+reward.money}};
+ const finished=step===TUTORIAL.sleep;
+ return {...g,tutorial:step+1,...(finished?{tourSection:tourSections[0]}:{}),
+  economy:{xp:g.economy.xp+reward.xp,balance:finished?0:g.economy.balance+reward.money}};
 }
 function idle(g:Game,end:number):Game{
  let s={...g},dt=end-g.updated;
@@ -94,11 +97,6 @@ export function advance(g:Game,now=Date.now(),offline=false):Game{
  const end=offline?Math.min(now,s.updated+BALANCE.offlineCap):now;
  const next=idle(s,end);
  if(next.hospital)return billHospital(next,now);
- // Keep the normal offline needs cap, while still detecting a critical decline during a longer absence.
- if(end<now&&next.tutorial===TUTORIAL.done){
-  const critical=idle(next,now);
-  if(critical.hospital)return billHospital(critical,now);
- }
  return {...next,updated:now};
 }
 export function cancelActivity(g:Game,now=Date.now()):Game{
@@ -115,6 +113,7 @@ export const COOLDOWNS:Record<Action,number>={feed:30000,pet:0,sleep:0,heal:6000
 export function blocked(g:Game,action:Action):string{
  if(g.health===0)return 'Петрашка в больнице';
  if(g.sleepUntil!==null)return 'Сначала разбудите Петрашку';
+ if(action==='sleep'&&g.tutorial===TUTORIAL.done)return '';
  if(g.restUntil!==null)return 'Петрашка отдыхает';
  if(g.roomAction)return 'Петрашка занят: '+activities[g.roomAction.kind].name.toLowerCase();
  if(g.tutorial<TUTORIAL.done){const expected:Partial<Record<number,Action>>={[TUTORIAL.sandwich]:'feed',[TUTORIAL.noodles]:'feed',[TUTORIAL.bath]:'wash',[TUTORIAL.sleep]:'sleep'};if(expected[g.tutorial]!==action)return 'Сначала выполните задание обучения';}
@@ -144,15 +143,13 @@ export function act(g:Game,action:Action,now=Date.now()):Game{
  if(action==='wash')return startActivity(g,'bath',now);
  if(action==='feed')return feed(g,g.tutorial===TUTORIAL.noodles?'noodles':'free',now);
  let s=advance(g,now);if(blocked(s,action))return s;
- if(action==='pet'){
-  s.petStrokes=s.mood<70?s.petStrokes+1:0;
-  if(s.petStrokes===3){
-   s.mood=Math.min(70,s.mood+1);
-   s.petStrokes=0;
-  }
- }
+ if(action==='pet'&&s.mood<70)s.mood=Math.min(70,s.mood+1);
  if(action==='heal')s.health=changeStat(s,'health',20);
- if(action==='sleep'){s.sleepUntil=-1;s.baseClock=0;}
+ if(action==='sleep'){
+  s=cancelActivity(s,s.updated);
+  s.sleepUntil=-1;
+  s.baseClock=0;
+ }
  if(action==='play'){s.mood=changeStat(s,'mood',20);s.energy-=10;}
  if(action==='sleep'&&s.tutorial===TUTORIAL.sleep)s=tutorialReward(s,TUTORIAL.sleep);
  s.cooldowns={...s.cooldowns,[action]:s.updated+COOLDOWNS[action]};s.cares++;return s;
@@ -193,7 +190,7 @@ export function parseSave(raw:string|null,now=Date.now(),deferAdvance=false):Gam
  if(!raw)return beginIntro(now);
  try{
   const saved=JSON.parse(raw);if(!saved||![1,2,3,4].includes(saved.version))return beginIntro(now);
-  const {study,learnedSkills:_removedSkills,...data}=saved;
+  const {study,learnedSkills:_removedSkills,petStrokes:_legacyPetStrokes,...data}=saved;
   const old=data.version<3;
   const base=fresh(now);
   const s={...base,...data,version:4,economy:parseEconomy(data.economy),closet:parseCloset(data.closet,data.version<4)} as Game;
@@ -225,6 +222,7 @@ export function parseSave(raw:string|null,now=Date.now(),deferAdvance=false):Gam
   if(!s.cooldowns||Object.keys(COOLDOWNS).some(a=>!Number.isFinite(s.cooldowns[a as Action])))s.cooldowns=base.cooldowns;
   if(data.version<4)migrateCareer(s,old?undefined:data.tutorial,data.economy,study);
   else if(!Number.isInteger(s.tutorial)||s.tutorial<0||s.tutorial>TUTORIAL.done)s.tutorial=TUTORIAL.done;
+  if(s.tourSection!==undefined&&(!isTourSection(s.tourSection)||!s.introCompleted||s.tutorial!==TUTORIAL.done))delete s.tourSection;
   const dogCare=parseDogCare(data.dogCare,s.updated,now);
   s.dogCare=s.dog||dogCare?.sheltered||dogCare?.diedAt!=null?dogCare:null;
   if(data.dogFood!==undefined)s.dogFood=Number.isSafeInteger(data.dogFood)&&data.dogFood>=0?data.dogFood:0;
@@ -234,7 +232,6 @@ export function parseSave(raw:string|null,now=Date.now(),deferAdvance=false):Gam
   s.roomAction=s.hospital?null:parseRoomAction(data.roomAction,s);
   if(s.roomAction){s.sleepUntil=null;s.restUntil=null;}
   for(const k of ['baseClock','exhaustionClock','freeFoodAt','cares'] as const)if(!Number.isFinite(s[k])||s[k]<0)s[k]=0;
-  if(s.petStrokes!==1&&s.petStrokes!==2)s.petStrokes=0;
  s.baseClock%=BALANCE.tick;
   if(s.sleepUntil!==null&&s.sleepUntil!==-1)s.sleepUntil=null;
   if(s.restUntil!==null&&(!Number.isFinite(s.restUntil)||s.restUntil>s.updated+600000))s.restUntil=null;

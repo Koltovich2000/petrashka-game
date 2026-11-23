@@ -2,7 +2,7 @@ import {TUTORIAL,xpProgress} from './balance';
 import {advance, type Game} from './game';
 
 export const beds = {
- standard: {name: 'Обычная кровать', energy: 16, price: 0, level: 1},
+ standard: {name: 'Обычная кровать', energy: 24, price: 0, level: 1},
  comfort: {name: 'Удобная кровать', energy: 20, price: 4_500, level: 6},
  premium: {name: 'Премиальная кровать', energy: 25, price: 10_500, level: 10},
 } as const;

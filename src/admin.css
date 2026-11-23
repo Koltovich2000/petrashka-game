@@ -48,6 +48,8 @@
 .admin-gift-label .game-icon{flex:none}
 .admin-feedback,.admin-dashboard [role=alert]{color:#ffcbcb}
 .admin-dashboard .admin-remove{color:#ffb6ba}
+.admin-poll-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.admin-section .admin-poll-heading button{flex:none;width:38px;padding:0;font-size:23px}
 .admin-journal li{padding:9px 10px;border:1px solid #53577e;border-radius:12px;background:#272d4a}
 .admin-journal li>span{font-size:13px}
 .admin-entry{--nav-height:var(--app-safe-bottom)}

@@ -4,6 +4,8 @@ import {beginIntro,KEY,parseSave,type Game} from './game';
 import {runGameCommand,type GameCommand} from './gameCommands';
 import type {WorldState} from './world';
 import type {TelegramProfile} from './telegram';
+import type {HospitalAds} from './hospitalAds';
+import type {NotificationStatus} from './NotificationSettings';
 import {parseOutfit,starterCloset,wardrobeKey} from './wardrobe';
 
 export function useGameState(profile:TelegramProfile|undefined,location:RefObject<Location>){
@@ -16,6 +18,9 @@ export function useGameState(profile:TelegramProfile|undefined,location:RefObjec
   }catch{return beginIntro();}
  });
  const [world,setWorld]=useState<WorldState>();
+ const [hospitalPaymentPending,setHospitalPaymentPending]=useState(false);
+ const [hospitalAds,setHospitalAds]=useState<HospitalAds>();
+ const [notifications,setNotifications]=useState<NotificationStatus>();
  const [needsCharacterName,setNeedsCharacterName]=useState(false);
  const [nameError,setNameError]=useState('');
  const [ready,setReady]=useState(!profile),[error,setError]=useState('');
@@ -29,7 +34,7 @@ export function useGameState(profile:TelegramProfile|undefined,location:RefObjec
   catch{setError('Не удалось сохранить прогресс');return false;}
  }
 
- async function send(command:GameCommand){
+ async function send(command:GameCommand):Promise<{before:Game;state:Game;hospitalAdAttempt?:string}|null>{
   if(!profile){
    const before=current.current,state=runGameCommand(before,command,Date.now(),location.current,import.meta.env.DEV);
    if(!commit(state)&&command.kind==='admin')return null;
@@ -59,12 +64,16 @@ export function useGameState(profile:TelegramProfile|undefined,location:RefObjec
      }
     }
     if(!response.ok)throw new Error('Game state unavailable');
-    const {state,world,needsCharacterName}=await response.json() as {state:Game;world?:WorldState;needsCharacterName?:boolean};
+    const {state,world,needsCharacterName,hospitalPaymentPending:paymentPending,hospitalAds,hospitalAdAttempt,notifications}=await response.json() as
+     {state:Game;world?:WorldState;needsCharacterName?:boolean;hospitalPaymentPending?:boolean;hospitalAds?:HospitalAds;hospitalAdAttempt?:string;notifications?:NotificationStatus};
     setWorld(world);
+    setHospitalPaymentPending(Boolean(paymentPending));
+    setHospitalAds(hospitalAds);
+    setNotifications(notifications);
     setNeedsCharacterName(Boolean(needsCharacterName));
     setReady(true);
     commit(state);
-    return {before,state};
+    return {before,state,hospitalAdAttempt};
    }catch{setError('Связь с сервером игры прервалась.');return null;}
    finally{window.clearTimeout(timeout);}
   }).finally(()=>{pending.current--;});
@@ -72,5 +81,5 @@ export function useGameState(profile:TelegramProfile|undefined,location:RefObjec
   return task;
  }
 
- return {game,current,ready,error,commit,send,key,world,needsCharacterName,nameError,clearNameError:()=>setNameError('')};
+ return {game,current,ready,error,commit,send,key,world,hospitalPaymentPending,hospitalAds,notifications,needsCharacterName,nameError,clearNameError:()=>setNameError('')};
 }

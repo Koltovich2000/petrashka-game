@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {TUTORIAL} from './balance';
-import {dailyDay,dailyStart,newDaily,tasks,type DailyReward} from './dailyTasks';
+import {dailyDay,dailyStart,newDaily,nextDailyReset,tasks,type DailyReward} from './dailyTasks';
 import {rubles} from './economy';
 import type {Game} from './game';
 import {GameIcon} from './GameIcon';
@@ -53,7 +53,7 @@ export function DailyNotebook({game,serverNow,onClose,onClaim}:{game:Game;server
  return <dialog ref={dialog} className="event-dialog task-notebook" aria-labelledby="daily-title" onClose={onClose}>
   <header><h2 id="daily-title"><GameIcon name="tasks"/> Задания на день</h2>
    <button type="button" className="event-close" aria-label="Закрыть тетрадь" onClick={()=>dialog.current?.close()}>×</button></header>
-  <p className="task-reset">{moscowDate.format(dailyStart(day))} · Обновление в 12:00 МСК</p>
+  <p className="task-reset">Задания обновляются каждые 12 часов. Следующее обновление в {moscowTime.format(nextDailyReset(now))} МСК.</p>
   {game.tutorial<TUTORIAL.done&&<p>Задания начнут засчитываться после обучения.</p>}
   {feedback&&<p role="status">{feedback}</p>}
   {daily?<ol>{daily.ids.map(id=>{
@@ -68,11 +68,11 @@ export function DailyNotebook({game,serverNow,onClose,onClaim}:{game:Game;server
     {available&&<button type="button" disabled={claiming} onClick={()=>void claim({day,id})}>Забрать деньги</button>}
    </li>;
   })}</ol>:<p role="status">Обновляем задания…</p>}
-  {earlier.length>0&&<section aria-label="Награды за прошлые дни">
-   <h3>Награды за прошлые дни</h3>
+  {earlier.length>0&&<section aria-label="Награды за прошлые задания">
+   <h3>Награды за прошлые задания</h3>
    <ul className="past-task-rewards">{earlier.map(reward=><li key={`${reward.day}:${reward.id}`}>
     <strong>{tasks[reward.id].title}</strong>
-    <div><span>{moscowDate.format(dailyStart(reward.day))}</span><b>+{rubles(tasks[reward.id].reward)}</b></div>
+    <div><span>{moscowDate.format(dailyStart(reward.day))} · {moscowTime.format(dailyStart(reward.day))}</span><b>+{rubles(tasks[reward.id].reward)}</b></div>
     <button type="button" disabled={claiming} onClick={()=>void claim(reward)}>Забрать деньги</button>
    </li>)}</ul>
   </section>}
@@ -134,7 +134,7 @@ function PollNotice({poll,serverNow,playerId,suspended,onVote}:{poll:PollState;s
   <dialog ref={dialog} className="event-dialog poll-dialog" aria-labelledby="poll-title"
    onCancel={event=>{event.preventDefault();dismiss();}}>
    <div className="poll-card">
-    <h2 id="poll-title"><GameIcon name="megaphone"/>{done?'Итоги голосования':'Голосование'}<GameIcon name="megaphone"/></h2>
+    <h2 id="poll-title" className="poll-title"><GameIcon name="megaphone"/>{done?'Итоги голосования':'Голосование'}<GameIcon name="megaphone"/></h2>
     {!done&&<button type="button" className="event-close" aria-label="Закрыть голосование" onClick={dismiss}>×</button>}
     <p className="poll-question" dir="auto">{poll.question}</p>
     {poll.counts?<PollResults poll={poll}/>:waiting?<p role="status">Подводим итоги…</p>:

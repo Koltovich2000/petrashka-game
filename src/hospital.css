@@ -6,9 +6,9 @@
 .hospital-pulse{stroke-dasharray:105 30;animation:hospital-beat 1.65s linear infinite}
 @keyframes hospital-beat{to{stroke-dashoffset:-135}}
 .hospital-dialog{
- width:min(440px,calc(100% - 24px));max-height:calc(100dvh - 26px);margin:auto auto max(16px,var(--app-safe-bottom));
+ width:min(440px,calc(100% - 24px));max-height:calc(var(--tg-viewport-stable-height,100dvh) - 26px - var(--app-safe-top) - var(--app-safe-bottom));margin:auto auto max(16px,var(--app-safe-bottom));
  color:#f8f2ff;background:#222843;border:1px solid #8791bd;border-radius:18px;padding:17px;
- box-shadow:0 12px 40px #10172b99;font:14px/1.45 system-ui,sans-serif
+ box-shadow:0 12px 40px #10172b99;font:14px/1.45 system-ui,sans-serif;overflow:auto;overscroll-behavior:contain
 }
 .hospital-dialog::backdrop{background:linear-gradient(transparent,#0b102593 70%)}
 .hospital-dialog h2{margin:0 0 8px;font-size:clamp(18px,5vw,25px)}
@@ -17,15 +17,15 @@
 .hospital-totals div{display:flex;justify-content:space-between;gap:8px}
 .hospital-totals dd{margin:0;font-weight:700;white-space:nowrap}
 .medical-cost{color:#ff8b96;font-weight:750}
-.hospital-sales{margin:8px 0;padding-inline-start:18px}
-.hospital-sold-art{width:100px;height:76px;margin:8px auto;display:grid;place-items:center}
-.hospital-sold-art svg{max-width:100%;max-height:100%}
-.hospital-sold-art{animation:sold-away .6s .35s ease-in both}
-.hospital-sold-art.leaving{opacity:0}
-@keyframes sold-away{from{transform:scale(1);opacity:1}to{transform:scale(.84) translateY(-7px);opacity:.28}}
-.hospital-dialog button.hospital-next:not(.mascot):not(.mini-stats button){
+.hospital-dialog h3{margin:0;font-size:14px}
+.hospital-sales{margin:6px 0 8px;padding-inline-start:18px}
+.hospital-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.hospital-dialog button:is(.hospital-next,.hospital-ad):not(.mascot):not(.mini-stats button){
  border:1px solid #ffdc96;clip-path:none;border-radius:12px;background:linear-gradient(#ffe49c,#f7ad4f);
- color:#25182d;font-weight:800;padding:10px;width:100%;margin-top:8px
+ color:#25182d;font:800 13px/1.35 system-ui,sans-serif;padding:9px 5px;width:100%;min-height:44px
 }
-.hospital-dialog button.hospital-next:not(.mascot):not(.mini-stats button)::before{content:none}
-@media(prefers-reduced-motion:reduce){.hospital-sold-art,.hospital-pulse{animation:none}}
+.hospital-dialog button.hospital-ad:not(.mascot):not(.mini-stats button){
+ border-color:#a88bd6;background:linear-gradient(#513b75,#342752);color:#fff3d4
+}
+.hospital-dialog button:is(.hospital-next,.hospital-ad):not(.mascot):not(.mini-stats button)::before{content:none}
+@media(prefers-reduced-motion:reduce){.hospital-pulse{animation:none}}

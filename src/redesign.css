@@ -67,6 +67,13 @@
  top:auto;bottom:calc(100% + 3px);left:50%;
  max-width:min(92%,240px);font-size:12px;padding:9px 13px 19px;
 }
+.modern .speech button.speech-action:not(.mascot):not(.mini-stats button){
+ pointer-events:auto;padding:2px 3px;border:0;border-radius:4px;background:none;box-shadow:none;
+ color:inherit;font:inherit;text-decoration:underline;text-underline-offset:2px;
+}
+.modern .speech button.speech-action:focus-visible:not(.mascot):not(.mini-stats button){
+ outline:2px solid currentColor;outline-offset:0;
+}
 .scene-day{position:absolute;right:10px;top:11px;z-index:4;border-radius:8px;padding:4px 8px;background:#121931b8;font-size:11px;font-weight:700}
 .modern button.sound-toggle{font-size:13px;top:8px;left:9px;width:34px;height:32px;padding:0}
 .modern .photo-room .locations{bottom:7px;left:8px;right:8px;gap:5px}
@@ -123,7 +130,15 @@
 /* Taller play space: the feet stay on the floor while the ceiling moves up. */
 .modern .home-layout .photo-room{height:clamp(630px,92dvh,1020px);flex:0 0 auto;min-height:630px}
 .modern .actor-position{width:clamp(205px,66vmin,350px);height:clamp(205px,66vmin,350px)}
-.modern button.wake-button:not(.mascot):not(.mini-stats button){position:absolute;top:25%;left:50%;transform:translateX(-50%);z-index:15;padding:12px 20px;border-color:#ffd36f}
+.sleep-controls{
+ position:absolute;top:16%;left:50%;transform:translateX(-50%);z-index:15;
+ display:grid;justify-items:center;gap:4px;width:max-content;max-width:62%;
+}
+.sleep-recovery{
+ padding:4px 8px;border-radius:8px;background:#121931df;
+ font-size:clamp(10px,2.7vw,12px);text-align:center;font-variant-numeric:tabular-nums;
+}
+.modern button.wake-button:not(.mascot):not(.mini-stats button){min-height:36px;padding:5px 12px;border-color:#ffd36f;font-size:12px}
 .hygiene-effects{position:absolute;inset:0;pointer-events:none;z-index:5}
 .wet-drips{position:absolute;left:44%;top:78%;width:15%;height:18%}
 .wet-drips i{position:absolute;left:10%;width:4px;height:7px;background:#81bad3;animation:wet-drip 1.4s steps(6) infinite}
@@ -167,7 +182,7 @@
  .modern .actor-position.activity-clean{transition:none}
  .pose-clean .arm,.floor-mess.scrubbing svg,.floor-mess i{animation:none}
 }
-.tutorial-card,.hygiene-warning{padding:10px 12px;margin:0;background:#2d2945;border:1px solid #e1bc6b;border-radius:13px;font-size:13px;line-height:1.45}.tutorial-card p{font-size:12px;margin:6px 0 0;color:#d3cee3}.tutorial-card button{display:block;padding:8px;margin-top:8px}
+.hygiene-warning{padding:10px 12px;margin:0;background:#2d2945;border:1px solid #e1bc6b;border-radius:13px;font-size:13px;line-height:1.45}
 @media(prefers-reduced-motion:reduce){.modern .stink-cloud svg{opacity:.65}}
 .modern .dev-tools-toggle{position:fixed;right:5px;bottom:calc(var(--nav-height) + 5px);z-index:24;padding:4px 7px;font-size:9px;opacity:.7}
 .dev-tools label{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0}.dev-tools input{width:80px;background:#161d32;color:white;border:1px solid #676585;border-radius:5px;padding:5px}.time-tools{display:flex;gap:6px}.time-tools button{padding:6px;font-size:11px}
@@ -228,7 +243,6 @@
 }
 .actor-activity span{color:#efd899;font-variant-numeric:tabular-nums}
 
-.quick-actions .care-tutorial-target{border-color:#ffd36f!important;box-shadow:inset 0 0 12px #ffd36f55!important}
 @media(prefers-reduced-motion:reduce){
  .room-object-outline{transition:none}
 }
@@ -530,8 +544,6 @@
  }
  .modern .home-layout .photo-room.choosing-play .floor-shadow{bottom:calc(var(--play-menu-floor) + 2px)}
  .home-layout .yoga-scene{--yoga-size:var(--room-avatar-size)}
- .home-layout .tutorial-card{padding:5px 8px;font-size:12px;line-height:1.28}
- .home-layout .tutorial-card p{margin-top:3px;font-size:11px}
  .home-layout .quick-care{padding:0}
  .home-layout .quick-actions button{min-height:44px}
  .home-layout .quick-actions .game-icon{width:20px;height:20px}

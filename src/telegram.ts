@@ -9,6 +9,7 @@ interface WebApp {
  setBackgroundColor(color: string): void;
  disableVerticalSwipes?(): void;
  openInvoice?(url: string, callback: (status: 'paid' | 'cancelled' | 'failed' | 'pending') => void): void;
+ requestWriteAccess?(callback:(allowed:boolean)=>void):void;
  onEvent(event: LifecycleEvent, callback: () => void): void;
  offEvent(event: LifecycleEvent, callback: () => void): void;
  HapticFeedback?: {impactOccurred(style: 'light'): void};
@@ -47,11 +48,18 @@ export function onTelegramLifecycle(activate: () => void, deactivate: () => void
 
 export type TelegramProfile = {id:string;isAdmin:boolean;gameToken:string};
 
-export function giftPaymentAvailable() {
+export function requestNotificationAccess(){
+ if(!telegram?.requestWriteAccess||!telegram.isVersionAtLeast('6.9')){
+  return Promise.reject(new Error('Обнови Telegram, чтобы включить уведомления.'));
+ }
+ return new Promise<boolean>(resolve=>telegram.requestWriteAccess!(resolve));
+}
+
+export function starPaymentsAvailable() {
  return Boolean(telegram?.initData && telegram.openInvoice && telegram.isVersionAtLeast('6.1'));
 }
 
-export async function giftPaymentRequest<T>(path:string, body:Record<string, unknown>) {
+export async function starPaymentRequest<T>(path:string, body:Record<string, unknown>) {
  const controller = new AbortController();
  const timeout = window.setTimeout(() => controller.abort(),12_000);
  try {
@@ -73,9 +81,9 @@ export async function giftPaymentRequest<T>(path:string, body:Record<string, unk
  }
 }
 
-export function openGiftInvoice(url:string) {
+export function openStarInvoice(url:string) {
  const app = telegram;
- if (!giftPaymentAvailable() || !app?.openInvoice) throw new Error('Откройте игру в Telegram, чтобы подарить подарок.');
+ if (!starPaymentsAvailable() || !app?.openInvoice) throw new Error('Откройте игру в Telegram, чтобы оплатить звёздами.');
  return new Promise<'paid' | 'cancelled' | 'failed' | 'pending'>(done => app.openInvoice!(url,done));
 }
 

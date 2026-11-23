@@ -1,11 +1,13 @@
 import {activities,activityReason,computerXP,BALL_RETURN_GAIN,type ActivityKind,type FurnitureId,type Location} from './activities';
-import {useEffect,useRef,useState,type CSSProperties} from 'react';
+import {useEffect,useRef,useState,type CSSProperties,type RefObject} from 'react';
 import {blocked,statLimit,feeling,gameDay,foodReason,hygieneMessage,type Action,type Game,type Stat} from './game';
-import {TUTORIAL,tutorialRewards,type FoodId} from './balance';
+import {TUTORIAL,type FoodId} from './balance';
 import {FoodTray} from './FoodTray';
 import {Room} from './Room';
 import {GameIcon} from './GameIcon';
-import {dogSatiety} from './dogSchedule';
+import {dogHungerLimit,dogSatiety,dogShelterAfter} from './dogSchedule';
+import {remainingTime} from './GameEvents';
+import {TutorialSpotlight} from './TutorialGuide';
 import {PixelIcon} from './PixelIcon';
 import type {Outfit} from './wardrobe';
 
@@ -22,21 +24,34 @@ const actions=[
 ] as const;
 export type CareMode=typeof actions[number][0];
 const playOptions=[{id:'ball',name:'Мячик'},{id:'computer',name:'Компьютер'}] as const;
-const tutorialTexts=[
- 'Покорми Петрашку бесплатным бутербродом.',
- 'Купи учебную лапшу за '+TUTORIAL.noodlePrice+' ₽ и покорми Петрашку.',
- 'Открой «Ванную», нажми на ванну и доведи гигиену до 100% мочалкой.',
- 'Вернись в «Комнату» и нажми на кровать.',
-];
+function careGuide(game:Game,location:Location,feeding:boolean){
+ if(game.tutorial===TUTORIAL.sandwich||game.tutorial===TUTORIAL.noodles){
+  if(!feeding)return {target:'[data-guide-feed]',text:'Нажми «Покормить»'};
+  const dish=game.tutorial===TUTORIAL.sandwich?'бутерброд':'лапшу';
+  return {target:'.scene-feeding .scene-food-grid button',destination:'.feed-mouth-target',text:`Перетащи ${dish} ко рту Петрашки`};
+ }
+ if(game.tutorial===TUTORIAL.bath){
+  if(game.roomAction?.kind==='bath')return {
+   target:'.bath-sponge',destination:'.bath-head-bob > svg',scrub:true,
+   text:`Мой Петрашку мочалкой туда и обратно. Гигиена ${Math.floor(game.hygiene)} / 100%`,
+  };
+  if(location!=='bathroom')return {target:'[data-guide-location="bathroom"]',text:'Открой «Ванную»'};
+  return {target:'.object-bath',text:'Нажми на ванну'};
+ }
+ if(game.roomAction?.kind==='bath')return {target:'.bath-finish',text:'Готово! Нажми «Закончить»'};
+ if(location!=='room')return {target:'[data-guide-location="room"]',text:'Вернись в «Комнату»'};
+ return {target:'.object-bed',text:'Нажми на кровать, чтобы уложить Петрашку спать'};
+}
 
 interface Props {
  onActivity:(kind:ActivityKind,dogMessAt?:number)=>void;onCancelActivity:()=>void;onMove:(id:FurnitureId,x:number,y:number)=>void;
  onWashStroke:(id:string)=>void;onBallReturn:(id:string)=>void;onFeedDog:()=>void;
- location:Location;onLocationChange:(location:Location)=>void; active:boolean; game:Game; outfit:Outfit; effect:string; gain:string; eatenFood:FoodId|null;
+ location:Location;onLocationChange:(location:Location)=>void; active:boolean; wallTime:number; game:Game; outfit:Outfit; effect:string; gain:string; eatenFood:FoodId|null;
  motionBusy:boolean; interact:(action:Action,food?:FoodId)=>void; setMotionBusy:(busy:boolean)=>void; onWake:()=>void;
+ guideRoot?:RefObject<HTMLDivElement|null>;
 }
 
-export function HomeScreen({location,onLocationChange,active,game,outfit,effect,gain,eatenFood,motionBusy,interact,setMotionBusy,onWake,onActivity,onCancelActivity,onWashStroke,onBallReturn,onMove,onFeedDog}:Props){
+export function HomeScreen({location,onLocationChange,active,wallTime,game,outfit,effect,gain,eatenFood,motionBusy,interact,setMotionBusy,onWake,onActivity,onCancelActivity,onWashStroke,onBallReturn,onMove,onFeedDog,guideRoot}:Props){
  const [mode,setMode]=useState<CareMode|null>(null);
  const [recovering,setRecovering]=useState<Set<Stat>>(()=>new Set());
  const previousGame=useRef(game);
@@ -65,11 +80,11 @@ export function HomeScreen({location,onLocationChange,active,game,outfit,effect,
   const timers=recoveryTimers.current;
   return()=>{timers.forEach(timer=>window.clearTimeout(timer));timers.clear();};
  },[]);
- const tutorialFeeding=game.tutorial===0||game.tutorial===TUTORIAL.noodles;
  const state=feeling(game);
  const sleeping=game.sleepUntil!==null;
  const dogFood=game.dogFood??0;
- const dogFoodLevel=game.dog&&game.dogCare?dogSatiety(game.dogCare,game.updated):null;
+ const dogCare=game.dog?game.dogCare:null;
+ const dogFoodLevel=dogCare?dogSatiety(dogCare,game.updated):null;
  useEffect(()=>{if(!active||sleeping||state==='faint'||game.roomAction)setMode(null)},[active,sleeping,state,game.roomAction]);
  const particles=({heal:['✚','✦','✚'],wash:['🫧','🫧','💧'],play:['⚽','✦','★'],pet:['♥','♥','✦']} as Record<string,string[]>)[effect]??[];
  const execute=(action:Action)=>{
@@ -77,6 +92,22 @@ export function HomeScreen({location,onLocationChange,active,game,outfit,effect,
   interact(action);
   setMode(null);
  };
+ let speech=labels[state];
+ let speechAction:{label:string;run:()=>void}|undefined;
+ if(game.tutorial===0)speech='Ну всё, я в Москве. Денег ноль. И жрать хочется. Надо что-то придумать.';
+ else if(game.tutorial===TUTORIAL.noodles)speech='Теперь хватит на лапшу. Надо поесть.';
+ else if(game.floorMess[location])speech='Надо убрать какашки с пола.';
+ else if(state==='hungry'&&!blocked(game,'feed')){
+  if(mode!=='feed')speechAction={label:'Открыть еду',run:()=>setMode('feed')};
+ }else if(state==='tired'&&!blocked(game,'sleep')){
+  speechAction={label:'Уложить Петрашку спать',run:()=>execute('sleep')};
+ }else{
+  speech=hygieneMessage(game.hygiene)||speech;
+  if(state==='dirty'&&!activityReason(game,'bath'))speechAction={
+   label:'Начать мыться',
+   run:()=>{setMode(null);onActivity('bath');},
+  };
+ }
  function feedAtMouth(id:FoodId){
   if(mode!=='feed'||motionBusy||foodReason(game,id))return;
   interact('feed',id);
@@ -105,35 +136,40 @@ export function HomeScreen({location,onLocationChange,active,game,outfit,effect,
    </div>;
   })}
  </section>;
- return <div className="home-layout" data-tutorial={game.tutorial}>
-  {game.tutorial<TUTORIAL.done&&<aside className="tutorial-card" role="status">
-   <strong>{game.tutorial+1} / {TUTORIAL.done} · {tutorialTexts[game.tutorial]}</strong>
-   <p>+{tutorialRewards[game.tutorial].xp} XP{tutorialRewards[game.tutorial].money>0&&' · +'+tutorialRewards[game.tutorial].money+' ₽'}</p>
-  </aside>}
-
-  <Room statHud={statHud} playTray={playTray} location={location} onLocationChange={onLocationChange} onEnterRoom={()=>{setMode(null);onLocationChange('room');}} foodTray={mode==='feed'&&!blocked(game,'feed')?<FoodTray game={game} onFeed={feedAtMouth}/>:null} game={game} onActivity={onActivity} onCancelActivity={onCancelActivity} onWashStroke={onWashStroke} onBallReturn={onBallReturn} onMove={onMove} hygiene={game.hygiene} onWake={onWake} active={active} outfit={outfit} state={state} status={labels[state]} speech={game.tutorial===0?'Ну всё, я в Москве. Денег ноль. И жрать хочется. Надо что-то придумать.':game.tutorial===TUTORIAL.noodles?'Теперь хватит на лапшу. Надо поесть.':game.floorMess[location]?'Надо убрать какашки с пола.':hygieneMessage(game.hygiene)||labels[state]} effect={effect} gain={gain} eatenFood={eatenFood} particles={particles} sleeping={sleeping} day={gameDay(game)} onBusy={setMotionBusy} careMode={mode} onCare={execute} canSleep={!blocked(game,'sleep')} canPet={!blocked(game,'pet')}/>
-  {dogFoodLevel!==null&&<section className="dog-care-panel" aria-label="Уход за собакой">
-   <div><strong>{game.dogCare?.name?<><bdi>{game.dogCare.name}</bdi> · сытость</>:'Сытость собаки'} {dogFoodLevel}%</strong>
+ return <div className="home-layout">
+  <Room statHud={statHud} playTray={playTray} location={location} onLocationChange={onLocationChange} onEnterRoom={()=>{setMode(null);onLocationChange('room');}} foodTray={mode==='feed'&&!blocked(game,'feed')?<FoodTray game={game} onFeed={feedAtMouth}/>:null} game={game} onActivity={onActivity} onCancelActivity={onCancelActivity} onWashStroke={onWashStroke} onBallReturn={onBallReturn} onMove={onMove} hygiene={game.hygiene} onWake={onWake} active={active} wallTime={wallTime} outfit={outfit} state={state} status={labels[state]} speech={speech} speechAction={speechAction} effect={effect} gain={gain} eatenFood={eatenFood} particles={particles} sleeping={sleeping} day={gameDay(game)} onBusy={setMotionBusy} careMode={mode} onCare={execute} canSleep={!blocked(game,'sleep')} canPet={!blocked(game,'pet')}/>
+  {dogCare&&dogFoodLevel!==null&&<section className="dog-care-panel" aria-label="Уход за собакой">
+   <div><strong>{dogCare.name?<><bdi>{dogCare.name}</bdi> · сытость</>:'Сытость собаки'} {dogFoodLevel}%</strong>
     <progress aria-label="Сытость собаки" value={dogFoodLevel} max={100}/>
+    {dogFoodLevel<=50&&<small className="dog-care-warning" data-hungry={dogFoodLevel===0||undefined}>
+     {dogFoodLevel===0?'Покорми собаку. До приюта ':'Пора приготовить корм. До голода '}
+     <span role="timer">{remainingTime(dogCare.lastFedAt+(dogFoodLevel===0?dogShelterAfter:dogHungerLimit),game.updated)}</span>
+    </small>}
    </div>
    <button type="button" disabled={!dogFood||dogFoodLevel===100} onClick={onFeedDog}>
     {dogFood?`Дать корм · ${dogFood} порц.`:'Корм в магазине'}
    </button>
   </section>}
-  {dogFoodLevel===0&&<p className="dog-care-panel" role="status">Собака голодна. Покорми её, пока её не забрали в приют.</p>}
   {!game.dog&&game.dogCare?.hungerShelterAt!==undefined&&<p className="dog-care-panel" role="status">Собаку забрали в приют. Вернуть её можно в магазине.</p>}
   {!game.dog&&game.dogCare?.diedAt!=null&&<p className="dog-care-panel" role="status">Собака умерла от голода. В магазине можно приютить нового питомца.</p>}
   <section className="quick-care" aria-label="Действия">
    <div className="quick-actions">
     {actions.map(([key,label])=>{
      const reason=key==='play'?(playReason[0]===playReason[1]?playReason[0]:''):blocked(game,key);
-     return <button key={key} className={tutorialFeeding&&key==='feed'?'care-tutorial-target':undefined}
+     return <button key={key} data-guide-feed={key==='feed'||undefined}
       aria-pressed={mode===key} disabled={motionBusy||Boolean(reason)}
       title={reason||label} onClick={()=>setMode(mode===key?null:key)}>
       <GameIcon name={key}/><strong>{label}</strong>{reason&&<small>{reason}</small>}
      </button>;
     })}
+    {!sleeping&&game.tutorial===TUTORIAL.done&&
+     <button type="button" className="sleep-start" disabled={Boolean(blocked(game,'sleep'))}
+      title={game.roomAction?'Прервать занятие и лечь спать':'Уложить Петрашку спать'} onClick={()=>execute('sleep')}>
+      <GameIcon name="sleep"/><strong>Спать</strong>{game.roomAction&&<small>Прервёт занятие</small>}
+     </button>}
    </div>
   </section>
+  {guideRoot&&active&&game.tutorial<TUTORIAL.done&&<TutorialSpotlight
+   root={guideRoot} step={careGuide(game,location,mode==='feed'&&!blocked(game,'feed'))}/>}
  </div>;
 }

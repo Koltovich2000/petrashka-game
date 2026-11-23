@@ -1,13 +1,13 @@
-import {useEffect,useImperativeHandle,useLayoutEffect,useRef,useState,type Ref} from 'react';
+import {useEffect,useImperativeHandle,useLayoutEffect,useRef,useState,type CSSProperties,type Ref} from 'react';
 import type {Location} from './activities';
 import {dogPointAt,dogRoute,measureDogRoute,type GroundPoint} from './dogNavigation';
-import {dogVisitAt,dogVisitDuration} from './dogSchedule';
+import {dogIsSleepingAt,dogVisitAt,dogVisitDuration} from './dogSchedule';
 import {unlockSound} from './sound';
 import {playRoomSound,prepareRoomSound} from './roomSoundEffects';
 
-type DogArtProps={sitting?:boolean;barking?:boolean;barkKey?:number;happy?:boolean;preview?:boolean};
+type DogArtProps={sitting?:boolean;barking?:boolean;barkKey?:number;happy?:boolean;angry?:boolean;preview?:boolean};
 
-export function DogArt({sitting=false,barking=false,barkKey,happy=false,preview=false}:DogArtProps){
+export function DogArt({sitting=false,barking=false,barkKey,happy=false,angry=false,preview=false}:DogArtProps){
  return <svg className="dog-art" viewBox="0 0 84 62" shapeRendering="crispEdges" aria-hidden="true">
   <g stroke="#2d2035" strokeWidth="2.6" strokeLinejoin="miter">
    <path className="dog-tail" fill="#b46b3c"
@@ -42,7 +42,9 @@ export function DogArt({sitting=false,barking=false,barkKey,happy=false,preview=
    <path fill="#352437" stroke="none" d="M57 19H62L66 22V27L62 31H57L54 28V23ZM70 16H73L76 19V23L74 26H70L68 23V19Z"/>
    <path fill="#fff7eb" stroke="none" d="M57 21h3v3h-3zm4 5h2v2h-2zm9-8h3v3h-3zm4 4h2v2h-2z"/>
    </>}
-   <path fill="#6d392a" stroke="none" d="M50 16L54 12 59 11 61 13 57 14 53 17ZM66 12L69 11 73 12 74 14 71 14 68 13Z"/>
+   <path fill="#6d392a" stroke="none" d={angry
+    ?'M49 13L52 13 64 21 62 25 49 17ZM66 19L74 12 77 13 77 16 68 23Z'
+    :'M50 16L54 12 59 11 61 13 57 14 53 17ZM66 12L69 11 73 12 74 14 71 14 68 13Z'}/>
 
    <path fill="#f9d1a2" strokeWidth="1.75" d="M54 31L59 27H67L73 24H77L81 27V31L78 34H73L69 38 63 39 58 37 53 34Z"/>
    <path fill="#3e2839" stroke="none" d="M73 25H79L81 27 80 30H77L73 28Z"/>
@@ -56,6 +58,7 @@ export function DogArt({sitting=false,barking=false,barkKey,happy=false,preview=
    <path fill="#f6b985" stroke="none" d="M54 31h2v2h-2zm4 1h2v1h-2z"/>
    </g>
   </g>
+  {angry&&<path fill="none" stroke="#ff737f" strokeWidth="2.5" d="M30 2V7H24M36 2V7H42M24 13H30V18M42 13H36V18"/>}
   {(preview||barking)&&<g key={barkKey} className="dog-bark-rays" fill="#ffd46a">
    <path d="M75 5L77 1H80L79 7 76 10 74 9ZM79 11L83 9 84 12 81 14H79Z"/>
    {preview&&<path d="M4 23V18L7 15 9 17 7 20V23ZM4 14L7 11 12 10 14 12 10 13 7 16Z" fill="#ffd8a1"/>}
@@ -71,15 +74,84 @@ export type DogBallPartner={preparePass:(fromX:number,flightMs:number)=>DogHeade
 const obstacleSelector='.placed-furniture,[data-dog-obstacle]';
 const movementTime=(elapsed:number)=>elapsed-Math.max(0,Math.min(elapsed,resumeAt)-sitAt);
 
-export function Dog({updated,location,ballPartner}:{updated:number;location:Location;ballPartner:Ref<DogBallPartner>}){
- const visit=dogVisitAt(updated);
+export function Dog({updated,wallTime,location,active,ballPartner}:{updated:number;wallTime:number;location:Location;active:boolean;ballPartner:Ref<DogBallPartner>}){
  useEffect(()=>{
   for(const kind of ['dog-bark','dog-happy'] as const)void prepareRoomSound(kind).catch(()=>{});
   window.addEventListener('pointerdown',unlockSound,{once:true});
   return()=>window.removeEventListener('pointerdown',unlockSound);
  },[]);
- if(location!==visit.location)return null;
+ if(dogIsSleepingAt(wallTime))return <NightDog location={location} active={active}/>;
+ const visit=dogVisitAt(updated);
+ if(!active||location!==visit.location)return null;
  return <DogVisit key={visit.index} elapsed={visit.elapsed} reverse={visit.index%8>=4} location={location} ballPartner={ballPartner}/>;
+}
+
+const nightBarkDuration=5_000;
+const nightWalkDuration=1_300;
+type NightDogState={room:'room'|'hallway';phase:'sleeping'|'barking'|'leaving'};
+const nightDogStyle={'--night-walk-duration':`${nightWalkDuration}ms`} as CSSProperties;
+
+function NightDog({location,active}:{location:Location;active:boolean}){
+ const [dog,setDog]=useState<NightDogState>({room:'room',phase:'sleeping'});
+ const timers=useRef<{calm:number;arrive:number}|null>(null);
+ const visible=active&&dog.room===location;
+ const audible=visible&&dog.phase==='barking';
+ useEffect(()=>()=>{
+  if(!timers.current)return;
+  window.clearTimeout(timers.current.calm);
+  window.clearTimeout(timers.current.arrive);
+ },[]);
+ useEffect(()=>{
+  if(!audible)return;
+  let stop=playRoomSound('dog-bark');
+  const repeat=window.setInterval(()=>{
+   stop?.();
+   stop=playRoomSound('dog-bark');
+  },1000);
+  return()=>{window.clearInterval(repeat);stop?.();};
+ },[audible]);
+
+ function wake(){
+  if(timers.current||dog.phase!=='sleeping')return;
+  unlockSound();
+  const {room}=dog;
+  setDog({room,phase:'barking'});
+  const calm=window.setTimeout(()=>setDog({room,phase:'leaving'}),nightBarkDuration);
+  const arrive=window.setTimeout(()=>{
+   timers.current=null;
+   setDog({room:room==='room'?'hallway':'room',phase:'sleeping'});
+  },nightBarkDuration+nightWalkDuration);
+  timers.current={calm,arrive};
+ }
+
+ if(!visible)return null;
+ const sleeping=dog.phase==='sleeping',barking=dog.phase==='barking';
+ return <button type="button" className="night-dog" data-location={dog.room} data-pose={dog.phase}
+  style={nightDogStyle} disabled={!sleeping} aria-label={sleeping?'Собака спит. Разбудить':barking?'Собака сердито лает':'Собака уходит'} onClick={wake}>
+  {sleeping?<SleepingDogArt/>:<DogArt sitting={barking} barking={barking} angry={barking}/>}
+ </button>;
+}
+
+function SleepingDogArt(){
+ return <>
+  <svg className="dog-art" viewBox="0 0 84 62" shapeRendering="crispEdges" aria-hidden="true">
+   <g className="sleeping-dog-body" stroke="#2d2035" strokeWidth="2.6" strokeLinejoin="miter">
+    <path fill="#b46b3c" d="M22 49H12L6 44V38L10 34H14L17 38 14 42 17 45H25Z"/>
+    <path fill="#d78a46" d="M11 45L15 34 24 27 37 25 48 28 59 37 62 47 54 54H21L14 51Z"/>
+    <path fill="#f3ae63" stroke="none" d="M16 38L25 30 36 28 46 31 50 35 33 33 21 41Z"/>
+    <path fill="#af653b" d="M27 37L23 43 26 49 34 50H42L45 53 42 56H32L24 54 20 48 21 41Z"/>
+    <path fill="#773ca3" d="M48 34L56 35 59 40 56 48 49 50 44 47 50 42Z"/>
+    <path fill="#f3ae63" d="M48 48L56 46 60 49H68L71 53 67 56H48L44 53Z"/>
+    <path fill="#df9452" d="M50 35L54 28 63 26H70L75 31 77 40 82 44V50L78 54H64L56 50 51 45Z"/>
+    <path fill="#f9d1a2" strokeWidth="1.75" d="M66 45L71 41H77L81 44V49L77 53H67L63 50Z"/>
+    <path fill="#95502e" d="M57 30L51 29 44 34 41 41 43 48 48 50 54 46 58 38Z"/>
+    <path fill="none" d="M61 39L64 42H67L70 39"/>
+    <path fill="#3e2839" stroke="none" d="M75 43H80L82 45 80 48H77L74 46Z"/>
+    <path fill="#ffda64" strokeWidth="1.5" d="M53 47H57L59 50 57 53H53L51 50Z"/>
+   </g>
+  </svg>
+  <span className="sleeping-dog-z" aria-hidden="true">z<span>Z</span></span>
+ </>;
 }
 
 function DogVisit({elapsed,location,reverse,ballPartner}:{elapsed:number;location:Location;reverse:boolean;ballPartner:Ref<DogBallPartner>}){

@@ -13,7 +13,9 @@ import {roomLighting} from './roomLighting';
 import {RoomObjects} from './RoomObjects';
 import {activities,activityLocation,activityReason,locationLabels,BATH_READY_AT,type ActivityKind,type FurnitureId,type Location} from './activities';
 import {HygieneEffects,PixelPoop,PixelPuddle} from './HygieneEffects';
-import type {Action,Game} from './game';
+import {statLimit,type Action,type Game} from './game';
+import {beds} from './property';
+import {remainingTime} from './GameEvents';
 import type {CareMode} from './HomeScreen';
 import { useEffect, useLayoutEffect, useRef, useState, type AnimationEvent, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { PixelAvatar } from './PixelAvatar';
@@ -58,7 +60,8 @@ interface Props {
  statHud:ReactNode; foodTray?:ReactNode; playTray?:ReactNode; location:Location; onLocationChange:(location:Location)=>void;onEnterRoom:()=>void;
  game:Game;onActivity:(kind:ActivityKind,dogMessAt?:number)=>void;onCancelActivity:()=>void;onMove:(id:FurnitureId,x:number,y:number)=>void;
  onWashStroke:(id:string)=>void;onBallReturn:(id:string)=>void;
- active:boolean; hygiene:number; onWake:()=>void; outfit:Outfit; state:string; status:string; speech:string;
+ active:boolean; wallTime:number; hygiene:number; onWake:()=>void; outfit:Outfit; state:string; status:string; speech:string;
+ speechAction?:{label:string;run:()=>void};
  effect:string; gain:string; particles:string[]; eatenFood:FoodId|null; sleeping:boolean; day:number;
  onBusy:(busy:boolean)=>void; careMode:CareMode|null; onCare:(action:Action)=>void; canSleep:boolean; canPet:boolean;
 }
@@ -226,6 +229,8 @@ export function Room(p:Props){
  const asleep=p.sleeping&&!sleepWalking;
  const sceneWalking=bathWalking||doorWalking||sleepWalking||dumbbellPhase==='approach';
  const {restUntil,updated}=p.game;
+ const energyLimit=statLimit(p.game,'energy');
+ const sleepRecoveryMs=Math.round((energyLimit-p.game.energy)*3_600_000/beds[p.game.bed].energy);
  const wetness=hairWetness(p.game);
  const statusEnd=activeAction?.ends ?? restUntil ?? undefined;
  const statusLabel=actionKind?activities[actionKind].name:'Петрашка отдыхает';
@@ -311,9 +316,14 @@ export function Room(p:Props){
  {location==='room'&&<RoomWindow/>}
  {location==='hall'&&<HallWindow/>}
  <div className="room-light" aria-hidden="true"/>
- {p.game.dog&&p.active&&<Dog updated={updated} location={location} ballPartner={dogBallPartner}/>}
+ {p.game.dog&&<Dog updated={updated} wallTime={p.wallTime} location={location} active={p.active} ballPartner={dogBallPartner}/>}
  {asleep&&location==='room'&&<SleepScene outfit={p.outfit} wetness={wetness}/>}
- {asleep&&<button className="wake-button" onClick={p.onWake}>☀ Разбудить</button>}
+ {asleep&&<div className="sleep-controls">
+  <span className="sleep-recovery">{sleepRecoveryMs>0
+   ?<>До {energyLimit}% энергии <span role="timer">{remainingTime(updated+sleepRecoveryMs,updated)}</span></>
+   :'Энергия восстановилась'}</span>
+  <button type="button" className="wake-button" onClick={p.onWake}>☀ Разбудить</button>
+ </div>}
  <span className="scene-day">День {p.day}</span>
  {actionKind==='computer'&&!approaching&&<ComputerScene elapsed={elapsed} wetness={wetness}/>}
  {bathSoaking&&bathAction&&p.active&&p.state!=='faint'&&<BathScene key={bathAction.id} onScrub={()=>p.onWashStroke(bathAction.id)} onFinish={p.onCancelActivity}/>}
@@ -346,7 +356,10 @@ export function Room(p:Props){
    :<span role="timer" aria-label="Осталось">{Math.floor(secondsLeft/60)}:{String(secondsLeft%60).padStart(2,'0')}</span>}</>}
   <button type="button" className="cancel-activity" onClick={p.onCancelActivity}>{activeAction?.kind==='ball'?'Закончить':'Отменить'}</button>
  </div>}
- {p.state!=='faint'&&!showActivity&&!sceneWalking&&!asleep&&(busy||['hungry','sick','dirty','tired','sad'].includes(p.state)||p.speech!==p.status)&&<div className="speech" aria-live="polite">{phaseText}</div>}
+ {p.state!=='faint'&&!showActivity&&!sceneWalking&&!asleep&&(busy||['hungry','sick','dirty','tired','sad'].includes(p.state)||p.speech!==p.status)&&
+  <div className="speech" aria-live="polite">
+   {!busy&&p.speechAction?<button type="button" className="speech-action" aria-label={p.speechAction.label} onClick={p.speechAction.run}>{phaseText}</button>:phaseText}
+  </div>}
  <button disabled={p.state==='faint'} className={`mascot ${p.state} ${busy?'':p.effect}`} aria-label="Петрашка: проведите по голове туда и обратно, чтобы погладить, или потяните за туловище, чтобы поднять" onPointerDown={down} onPointerMove={move} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(e.detail===0&&!busy&&p.canPet&&!p.careMode)p.onCare('pet');}}>
  <span key={dumbbellPhase??(p.effect==='pet'?`pet-${p.game.cares}`:hitCount)} className="layered-character" role="img" aria-label={`Петрашка: ${busy?phaseText:p.status}`}>
   {toiletPhase==='use'?<ToiletRearAvatar outfit={p.outfit} wetness={wetness}/>
@@ -369,5 +382,5 @@ export function Room(p:Props){
  {!busy&&!p.sleeping&&p.gain&&<div className="effect-gain" role="status">{p.gain}</div>}
  {!sceneWalking&&p.foodTray}
  {!sceneWalking&&p.playTray}
- <nav className="locations" aria-label="Локации">{locations.map(l=><button key={l.id} aria-pressed={location===l.id} disabled={Boolean(activeAction)||doorWalking||sleepWalking} onClick={()=>select(l.id)}><span aria-hidden="true">{l.icon}</span>{locationLabels[l.id]}</button>)}</nav></section></>;
+ <nav className="locations" aria-label="Локации">{locations.map(l=><button key={l.id} data-guide-location={l.id} aria-pressed={location===l.id} disabled={Boolean(activeAction)||doorWalking||sleepWalking} onClick={()=>select(l.id)}><span aria-hidden="true">{l.icon}</span>{locationLabels[l.id]}</button>)}</nav></section></>;
 }

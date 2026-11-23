@@ -1,22 +1,22 @@
 import {furnitureCatalog,type FurnitureId} from './activities';
 import {beds,type BedUpgrade} from './property';
-import {catalog,categoryKeys,defaultOutfit,removePurchasedClothing,type Category} from './wardrobe';
+import {catalog,categoryKeys,defaultOutfit,removePurchasedClothing,starterCloset,type Category} from './wardrobe';
 import type {Game} from './game';
 
-export const hospitalRules={hour:3_600_000,rate:100,protection:6*3_600_000,
+export const hospitalRules={hour:3_600_000,rate:100,ads:2,protection:6*3_600_000,
  recovery:{health:50,energy:30,food:30,mood:20,hygiene:30}} as const;
 
 type Asset={name:string;price:number}&(
  {kind:'clothing';category:Category;index:number}|{kind:'furniture';id:FurnitureId}|{kind:'bed';id:BedUpgrade}
 );
-export type Hospital={status:'hospitalized';startedAt:number;billedHours:number;balanceSpent:number;cost:number;debt:number;sales:Asset[];notice:number};
+export type Hospital={status:'hospitalized';startedAt:number;billedHours:number;cost:number;balanceSpent:number;sales:Asset[]};
 
 const legacyFurniturePrices:Partial<Record<FurnitureId,number>>={yoga:7500,dumbbells:18000,tray:35000,entryKitchen:4200};
 const legacyBedPrices={comfort:15000,premium:35000};
 
 export function admit(game:Game,at:number):Game{
  return {...game,health:0,updated:at,roomAction:null,sleepUntil:null,restUntil:null,
-  hospital:{status:'hospitalized',startedAt:at,billedHours:0,balanceSpent:0,cost:0,debt:0,sales:[],notice:0}};
+  hospital:{status:'hospitalized',startedAt:at,billedHours:0,cost:0,balanceSpent:0,sales:[]}};
 }
 
 function assets(game:Game):Asset[]{
@@ -51,47 +51,77 @@ function removeAsset(game:Game,asset:Asset):Game{
 
 export function billHospital(game:Game,now:number):Game{
  const previous=game.hospital!;
- const billedHours=Math.floor((now-previous.startedAt)/hospitalRules.hour);
- if(billedHours<=previous.billedHours)return {...game,updated:now};
- const newCost=(billedHours-previous.billedHours)*hospitalRules.rate;
- const payment=Math.min(game.economy.balance,newCost);
- let next:Game={...game,updated:now,economy:{...game.economy,balance:game.economy.balance-payment}};
- let debt=previous.debt+newCost-payment;
- const sales=[...previous.sales];
- if(debt>0)for(const asset of assets(next)){
-  if(asset.price>debt)break;
-  next=removeAsset(next,asset);
-  sales.push(asset);debt-=asset.price;
+ const billedHours=Math.max(previous.billedHours,Math.floor((now-previous.startedAt)/hospitalRules.hour));
+ const cost=previous.cost+(billedHours-previous.billedHours)*hospitalRules.rate;
+ return {...game,updated:now,hospital:{...previous,billedHours,cost}};
+}
+
+export function hospitalQuote(game:Game,hospital:Hospital){
+ const soldValue=hospital.sales.reduce((sum,item)=>sum+item.price,0);
+ const due=Math.max(0,hospital.cost-hospital.balanceSpent-soldValue);
+ const cash=Math.min(game.economy.balance,due);
+ let remaining=due-cash;
+ const sales:Asset[]=[];
+ if(remaining>0)for(const asset of assets(game)){
+  sales.push(asset);
+  remaining-=asset.price;
+  if(remaining<=0)break;
  }
- return {...next,hospital:{...previous,billedHours,cost:previous.cost+newCost,balanceSpent:previous.balanceSpent+payment,debt,sales}};
+ return {due,cash,sales,writtenOff:Math.max(0,remaining),
+  balanceAfter:game.economy.balance-cash+Math.max(0,-remaining)};
 }
 
-export function acknowledgeHospital(game:Game,notice:number):Game{
- const h=game.hospital;
- return h&&notice===h.notice&&notice<=h.sales.length?{...game,hospital:{...h,notice:notice+1}}:game;
-}
-
-export function dischargeHospital(game:Game,notice:number):Game{
- const h=game.hospital;
- if(!h||notice!==h.notice||h.notice!==h.sales.length+1)return game;
- const absence=game.updated-h.startedAt;
+function recover(game:Game,hospital:Hospital):Game{
+ const absence=game.updated-hospital.startedAt;
  const businesses={...game.businesses};
  for(const id of Object.keys(businesses) as (keyof Game['businesses'])[])businesses[id]=Math.min(game.updated,businesses[id]!+absence);
  return {...game,...hospitalRules.recovery,hospital:null,businesses,
-  medicalDebt:game.medicalDebt+h.debt,protectedUntil:game.updated+hospitalRules.protection,
+  protectedUntil:game.updated+hospitalRules.protection,
   accidentActive:false,exhaustionClock:0,baseClock:0,freeFoodAt:game.updated};
+}
+
+export function dischargeHospital(game:Game,startedAt:number,cost:number,balance:number):Game{
+ const hospital=game.hospital;
+ if(!hospital||hospital.startedAt!==startedAt||hospital.cost!==cost||game.economy.balance!==balance)return game;
+ const quote=hospitalQuote(game,hospital);
+ const paid=quote.sales.reduce<Game>(removeAsset,game);
+ return recover({...paid,economy:{...paid.economy,balance:quote.balanceAfter}},hospital);
+}
+
+function restoreAsset(game:Game,asset:Asset):Game{
+ if(asset.kind==='bed')return {...game,bed:asset.id,bedPurchasePrice:asset.price};
+ if(asset.kind==='furniture'){
+  const item=furnitureCatalog.find(item=>item.id===asset.id);
+  if(!item||game.furniture[asset.id])return game;
+  return {...game,furniture:{...game.furniture,[asset.id]:{x:item.x,y:item.y}},
+   furnitureCosts:{...game.furnitureCosts,[asset.id]:asset.price}};
+ }
+ const {category,index}=asset;
+ const closet=game.closet??starterCloset();
+ if(closet.owned[category].includes(index))return game;
+ return {...game,closet:{...closet,owned:{...closet.owned,[category]:[...closet.owned[category],index]},
+  paid:{...closet.paid,[category]:{...closet.paid[category],[index]:asset.price}}}};
+}
+
+export function dischargeHospitalWithoutLosses(game:Game,startedAt:number):Game{
+ const hospital=game.hospital;
+ if(!hospital||hospital.startedAt!==startedAt)return game;
+ const restored=hospital.sales.reduce<Game>(restoreAsset,game);
+ const balance=Math.min(Number.MAX_SAFE_INTEGER,restored.economy.balance+hospital.balanceSpent);
+ return recover({...restored,economy:{...restored.economy,balance}},hospital);
 }
 
 export function parseHospital(raw:unknown,updated:number):Hospital|null{
  if(!raw||typeof raw!=='object')return null;
  const value=raw as Hospital;
- const amounts=[value.billedHours,value.cost,value.balanceSpent,value.debt,value.notice];
- if(value.status!=='hospitalized'||!Number.isSafeInteger(value.startedAt)||value.startedAt<0||value.startedAt>updated||
+ const {status,startedAt,billedHours,cost,balanceSpent}=value;
+ const amounts=[billedHours,cost,balanceSpent];
+ if(status!=='hospitalized'||!Number.isSafeInteger(startedAt)||startedAt<0||startedAt>updated||
   amounts.some(n=>!Number.isSafeInteger(n)||n<0)||!Array.isArray(value.sales))return null;
  const sales=value.sales.filter(asset=>asset&&typeof asset.name==='string'&&Number.isSafeInteger(asset.price)&&asset.price>0&&(
   (asset.kind==='furniture'&&furnitureCatalog.some(item=>item.id===asset.id))||
   (asset.kind==='bed'&&(asset.id==='comfort'||asset.id==='premium'))||
   (asset.kind==='clothing'&&Object.hasOwn(catalog,asset.category)&&catalog[asset.category][asset.index])
   ));
- return {...value,sales,notice:Math.min(value.notice,sales.length+1)};
+ return {status,startedAt,billedHours,cost,balanceSpent,sales};
 }

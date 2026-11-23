@@ -189,9 +189,6 @@
 .sleep-head{animation:sleep-head-breath 3.2s ease-in-out infinite}
 .sleep-blanket{transform-origin:66px 307px;animation:sleep-blanket-breath 3.2s ease-in-out infinite}
 .sleep-cloud{animation:sleep-cloud-float 3.2s ease-in-out infinite}
-.modern .sleeping-in-bed button.wake-button:not(.mascot):not(.mini-stats button){
- top:18%;left:max(61px,15%);padding:7px 10px;font-size:11px
-}
 @keyframes sleep-head-breath{50%{translate:0 -1.6px}}
 @keyframes sleep-blanket-breath{50%{transform:scale(1.006,1.021) translateY(-1.4px)}}
 @keyframes sleep-cloud-float{50%{translate:0 -5px;opacity:.78}}
@@ -249,13 +246,44 @@
 .dog-hearts i:first-child{left:23%;top:14%;font-size:13px;animation-delay:.1s}
 .dog-hearts i:last-child{left:68%;top:9%;font-size:15px;animation-delay:.08s}
 .room-dog[data-pose=run] .dog-art{animation:dog-bound .34s ease-in-out infinite}
-.room-dog .dog-leg{transform-origin:39px 45px;animation:dog-step .34s steps(3) infinite}
-.room-dog .dog-leg-back{animation-delay:-.17s}
+.room-dog .dog-leg,.night-dog[data-pose=leaving] .dog-leg{transform-origin:39px 45px;animation:dog-step .34s steps(3) infinite}
+.room-dog .dog-leg-back,.night-dog[data-pose=leaving] .dog-leg-back{animation-delay:-.17s}
 .room-dog .dog-tail{transform-origin:25px 38px;animation:dog-tail .55s steps(4) infinite}
 .room-dog[data-reaction=happy] .dog-tail{animation-duration:.25s}
 .room-dog[data-reaction=bark] .dog-art{transform-origin:50% 88%;animation:dog-bark .62s steps(6) both}
 .room-dog[data-reaction=bark] .dog-bark-rays{animation:dog-bark-rays .62s steps(1) both}
 .room-dog[data-ball-pose=hit] .dog-head{transform-origin:53px 35px;animation:dog-header .3s ease-out both}
+.modern button.night-dog:not(.mascot):not(.mini-stats button){
+ position:absolute;z-index:3;left:25%;top:83%;width:clamp(56px,15%,100px);padding:0;
+ transform:translate(-50%,-88%);background:none;border:0;border-radius:10px;box-shadow:none;
+ opacity:1;filter:none;transition:none;touch-action:manipulation
+}
+.modern button.night-dog[data-location=hallway]:not(.mascot):not(.mini-stats button){left:68%;top:86%}
+.modern button.night-dog:not(.mascot):not(.mini-stats button)::before{
+ content:'';position:absolute;inset:auto 10% 7% 9%;height:13%;
+ border-radius:50%;background:#211329ad;filter:blur(2px)
+}
+.night-dog .dog-art{position:relative;display:block;width:100%;overflow:visible;pointer-events:none}
+@media(hover:hover){
+ .night-dog[data-pose=sleeping]:hover .dog-art{filter:brightness(1.15) drop-shadow(0 0 3px #ffdda8)}
+}
+.modern button.night-dog:focus-visible:not(.mascot):not(.mini-stats button){outline-color:#ffeab0}
+.night-dog[data-pose=barking] .dog-art{transform-origin:50% 88%;animation:dog-bark 1s steps(6) infinite;--dog-facing:1}
+.night-dog[data-pose=barking] .dog-bark-rays{animation:dog-bark-rays 1s steps(1) infinite}
+.night-dog[data-pose=leaving]{animation:night-dog-leave var(--night-walk-duration) ease-in both}
+.night-dog[data-pose=leaving] .dog-art{animation:dog-bound .34s ease-in-out infinite}
+.sleeping-dog-body{transform-origin:50% 88%;animation:dog-breathe 2.8s ease-in-out infinite}
+.sleeping-dog-z{
+ position:absolute;top:7%;right:3%;color:#e2d7ff;text-shadow:1px 2px #282140;
+ font:800 clamp(10px,2.4vw,16px)/1 system-ui;animation:dog-dream 2.8s ease-in-out infinite
+}
+.sleeping-dog-z span{display:inline-block;margin-left:2px;transform:translateY(-.55em)}
+@keyframes dog-breathe{50%{transform:scaleY(1.05)}}
+@keyframes dog-dream{50%{translate:3px -4px;opacity:.65}}
+@keyframes night-dog-leave{to{left:calc(100% + 50px);top:81%}}
+@media(prefers-reduced-motion:reduce){
+ .sleeping-dog-body,.sleeping-dog-z,.night-dog[data-pose],.night-dog[data-pose] :is(.dog-art,.dog-bark-rays,.dog-leg){animation:none}
+}
 @keyframes dog-heart-rise{to{opacity:0;transform:translateY(-21px)}}
 @keyframes dog-bark{0%,41%,100%{rotate:0deg}15%,62%{rotate:calc(-9deg * var(--dog-facing,1))}}
 @keyframes dog-bark-rays{0%,55%{opacity:1}32%,80%,100%{opacity:0}}
@@ -292,4 +320,6 @@
 }
 .dog-care-panel>div{display:grid;min-width:0;gap:3px;flex:1}
 .dog-care-panel progress{width:100%;height:6px;accent-color:#ffc06d}
+.dog-care-warning{color:#ffe09f;font-size:inherit;font-variant-numeric:tabular-nums}
+.dog-care-warning[data-hungry=true]{color:#ffb6a7}
 .modern .dog-care-panel button:not(.mascot):not(.mini-stats button){min-height:34px;padding:4px 7px;font-size:inherit}

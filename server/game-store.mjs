@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import pg from 'pg';
 import {characterNameKey,parseCharacterName} from '../src/characterName.ts';
 import {worldStore,worldTables} from './world-store.mjs';
+import {notificationStore,notificationTables} from './notification-store.mjs';
 
 const tables=`
  CREATE TABLE IF NOT EXISTS petrashka_players (id TEXT PRIMARY KEY, state TEXT NOT NULL);
@@ -15,7 +16,7 @@ const tables=`
   admin_id TEXT NOT NULL, operation_id TEXT NOT NULL, player_id TEXT NOT NULL,
   at BIGINT NOT NULL, request TEXT NOT NULL, details TEXT NOT NULL,
   PRIMARY KEY(admin_id,operation_id)
- );${worldTables}`;
+ );${worldTables};${notificationTables}`;
 const indexes=`
  CREATE INDEX IF NOT EXISTS petrashka_players_last_seen ON petrashka_players(last_seen_at DESC,id);
  CREATE INDEX IF NOT EXISTS petrashka_polls_date ON petrashka_polls(started_at DESC,id DESC);
@@ -70,9 +71,9 @@ function alreadyApplied(action,row,audit){
 function bulkDetails(action,affected,total){
  return {kind:'adjust',...JSON.parse(action.request),affected,total,changes:{}};
 }
-function playerQueries(query,change,changeAll,close,world,fold='LOWER'){
+function playerQueries(query,change,changeAll,close,world,notifications,fold='LOWER'){
  return {
-  change,changeAll,close,world,
+  change,changeAll,close,world,notifications,
   async savedPlayerCount(){
    const [row]=await query("SELECT COUNT(*) AS total FROM petrashka_players WHERE state<>''",[]);
    return Number(row.total);
@@ -142,7 +143,7 @@ async function openPostgres(url){
  }catch(error){await pool.end();throw error;}
 
  const query=async(sql,args)=>(await pool.query(postgresParams(sql),args)).rows;
- const world=worldStore(async steps=>{
+ const transaction=async steps=>{
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
@@ -156,9 +157,11 @@ async function openPostgres(url){
    await client.query('COMMIT');
    return step.value;
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
- });
+ };
+ const world=worldStore(transaction);
+ const notifications=notificationStore(transaction);
  return playerQueries(query,
-  async(id,change,{activeAt=0,action}={})=>{
+  async(id,change,{activeAt=0,action,existingOnly=false}={})=>{
    const client=await pool.connect();
    const run=(sql,...args)=>client.query(postgresParams(sql),args);
    try{
@@ -166,9 +169,9 @@ async function openPostgres(url){
     if(action){
      // Serialize retries by one administrator before locking the target profile.
      await client.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',[action.adminId,action.id]);
-    }else await run(addPlayer,id);
+    }else if(!existingOnly)await run(addPlayer,id);
     const row=(await run(readPlayer+' FOR UPDATE',id)).rows[0];
-    if(!row){await client.query('COMMIT');return null;}
+    if(!row||existingOnly&&!row.state){await client.query('COMMIT');return null;}
     if(action&&alreadyApplied(action,row,(await run(readAction,action.adminId,action.id)).rows[0])){
      await client.query('COMMIT');return row.state?JSON.parse(row.state):null;
     }
@@ -206,7 +209,7 @@ async function openPostgres(url){
     await client.query('COMMIT');
     return result;
    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
-  },()=>pool.end(),world);
+  },()=>pool.end(),world,notifications);
 }
 
 export async function openGameStore(path,url){
@@ -234,7 +237,7 @@ export async function openGameStore(path,url){
  db.function('petrashka_fold',{deterministic:true},value=>value.toLowerCase());
 
  const query=(sql,args)=>db.prepare(sql).all(...args);
- const world=worldStore(steps=>{
+ const transaction=steps=>{
   db.exec('BEGIN IMMEDIATE');
   try{
    const operations=steps();
@@ -246,13 +249,15 @@ export async function openGameStore(path,url){
    db.exec('COMMIT');
    return step.value;
   }catch(error){db.exec('ROLLBACK');throw error;}
- });
- return playerQueries(query,(id,change,{activeAt=0,action}={})=>{
+ };
+ const world=worldStore(transaction);
+ const notifications=notificationStore(transaction);
+ return playerQueries(query,(id,change,{activeAt=0,action,existingOnly=false}={})=>{
   db.exec('BEGIN IMMEDIATE');
   try{
-   if(!action)add.run(id);
+   if(!action&&!existingOnly)add.run(id);
    const row=read.get(id);
-   if(!row){db.exec('COMMIT');return null;}
+   if(!row||existingOnly&&!row.state){db.exec('COMMIT');return null;}
    if(action&&alreadyApplied(action,row,audit.get(action.adminId,action.id))){
     db.exec('COMMIT');return row.state?JSON.parse(row.state):null;
    }
@@ -288,5 +293,5 @@ export async function openGameStore(path,url){
    db.exec('COMMIT');
    return result;
   }catch(error){db.exec('ROLLBACK');throw error;}
- },()=>db.close(),world,'petrashka_fold');
+ },()=>db.close(),world,notifications,'petrashka_fold');
 }

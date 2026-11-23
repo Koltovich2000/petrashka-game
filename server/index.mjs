@@ -29,8 +29,8 @@ export function createAppServer({
  game:gameOptions,
 } = {}) {
  const admins = new Set(adminIds.split(',').map(id => id.trim()).filter(id => /^[1-9]\d*$/.test(id)));
- const gifts = createGiftsApi({botToken,...giftOptions});
  const game = createGameApi({botToken,admins,...gameOptions});
+ const gifts = createGiftsApi({botToken,...giftOptions,hospital:game.hospitalPayments,notifications:game.notifications});
  const admin = createAdminApi({botToken,admins,game,gifts});
  const server = createServer(async (req,res) => {
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -42,6 +42,7 @@ export function createAppServer({
 
   if (path === '/healthz' && req.method === 'GET') return json(res,200,{ok:true});
   if (path === '/api/game') return game.handle(req,res);
+  if (path === '/api/hospital/ad-reward') return game.hospitalAdReward(req,res,url.searchParams);
   if (path.startsWith('/api/admin/')) return admin(req,res,path,url.searchParams);
   if (path === '/api/telegram/auth') {
    if (req.method !== 'POST') {
@@ -90,7 +91,7 @@ export function createAppServer({
   if (req.method === 'HEAD') return res.end();
   createReadStream(file).on('error',()=>res.destroy()).pipe(res);
  });
- server.once('listening',()=>{void game.logStorage();});
+ server.once('listening',()=>{void game.logStorage();game.notifications.start();});
  server.on('close',() => {gifts.close();game.close();});
  return server;
 }

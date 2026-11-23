@@ -3,6 +3,7 @@ import {resolve} from 'node:path';
 import {verifyTelegramProfile} from './telegram-auth.mjs';
 import {createGiftStore, giftCatalog} from './gifts-store.mjs';
 import {parseGiftWish} from '../src/giftWish.ts';
+import {isHospitalInvoice} from './hospital-payments.mjs';
 
 const giftPrefix = 'gift:';
 const maxBody = 32_768;
@@ -44,7 +45,13 @@ function createBotApi(botToken) {
    body:JSON.stringify(parameters), signal:AbortSignal.timeout(7000),
   });
   const data = await response.json();
-  if (!response.ok || data.ok !== true) throw new Error('Telegram Bot API failed: ' + method);
+  if (!response.ok || data.ok !== true) {
+   const error = new Error('Telegram Bot API failed: ' + method);
+   if (method === 'refundStarPayment' && typeof data.description === 'string') {
+    error.alreadyRefunded = /charge_already_refunded|already (?:been )?refunded/i.test(data.description);
+   }
+   throw error;
+  }
   return data.result;
  };
 }
@@ -56,8 +63,12 @@ export function createGiftsApi({
  databaseUrl = process.env.GIFTS_DATABASE_URL,
  databasePath = process.env.GIFTS_DB_PATH,
  botApi = createBotApi(botToken),
+ hospital,
+ notifications,
 } = {}) {
- const paymentsEnabled = Boolean(botToken && (databaseUrl || databasePath) && /^[A-Za-z0-9_-]{32,256}$/.test(webhookSecret));
+ const webhookEnabled = Boolean(botToken && /^[A-Za-z0-9_-]{32,256}$/.test(webhookSecret));
+ const paymentsEnabled = Boolean(webhookEnabled && (databaseUrl || databasePath));
+ const hospitalPaymentsEnabled = Boolean(webhookEnabled && hospital);
  let db;
  const store = () => db ??= createGiftStore(databasePath || resolve('data/gifts.sqlite'),databaseUrl).catch(error => {
   db = undefined;
@@ -65,8 +76,14 @@ export function createGiftsApi({
  });
 
  async function telegramUpdate(update) {
+  if(notifications)await notifications.telegramUpdate(update);
   const checkout = update?.pre_checkout_query;
-  if (typeof checkout?.invoice_payload === 'string' && checkout.invoice_payload.startsWith(giftPrefix)) {
+  if (hospitalPaymentsEnabled && isHospitalInvoice(checkout?.invoice_payload)) {
+   const valid = await hospital.checkout(checkout);
+   return valid ? {method:'answerPreCheckoutQuery', pre_checkout_query_id:checkout.id, ok:true}
+    : {method:'answerPreCheckoutQuery', pre_checkout_query_id:checkout.id, ok:false, error_message:'Счёт за выписку недействителен. Откройте больницу в игре и проверьте состояние оплаты.'};
+  }
+  if (paymentsEnabled && typeof checkout?.invoice_payload === 'string' && checkout.invoice_payload.startsWith(giftPrefix)) {
    const valid = await (await store()).checkout(checkout.invoice_payload, String(checkout.from?.id), checkout.total_amount, checkout.currency, checkout.id);
    // Returning a Bot API call from the webhook answers within Telegram's deadline.
    return valid ? {method:'answerPreCheckoutQuery', pre_checkout_query_id:checkout.id, ok:true}
@@ -74,7 +91,19 @@ export function createGiftsApi({
   }
   const message = update?.message;
   const payment = message?.successful_payment;
-  if (typeof payment?.invoice_payload === 'string' && payment.invoice_payload.startsWith(giftPrefix)) {
+  if (hospitalPaymentsEnabled && isHospitalInvoice(payment?.invoice_payload)) {
+   const sender = message.from?.id;
+   if (await hospital.complete(payment,sender) === 'refund') {
+    try {
+     const refunded = await botApi('refundStarPayment',{user_id:Number(sender),telegram_payment_charge_id:payment.telegram_payment_charge_id});
+     if (refunded !== true) throw new Error('Telegram did not confirm the refund');
+    } catch (error) {
+     if (!error.alreadyRefunded) throw error;
+    }
+    await hospital.recordRefund(payment,sender);
+   }
+  }
+  if (paymentsEnabled && typeof payment?.invoice_payload === 'string' && payment.invoice_payload.startsWith(giftPrefix)) {
    const date = Number.isSafeInteger(message.date) && message.date > 0 ? message.date * 1000 : Date.now();
    if (!await (await store()).complete(payment.invoice_payload, String(message.from?.id), payment.total_amount, payment.currency, payment.telegram_payment_charge_id, date)) {
     // Keep the update retryable and log neither the profile nor the charge.
@@ -82,12 +111,15 @@ export function createGiftsApi({
    }
   }
   const refund = message?.refunded_payment;
-  if (typeof refund?.invoice_payload === 'string' && refund.invoice_payload.startsWith(giftPrefix)) {
+  if (hospitalPaymentsEnabled && isHospitalInvoice(refund?.invoice_payload)) {
+   await hospital.recordRefund(refund,message.chat?.type==='private'?message.chat.id:message.from?.id);
+  }
+  if (paymentsEnabled && typeof refund?.invoice_payload === 'string' && refund.invoice_payload.startsWith(giftPrefix)) {
    await (await store()).refund(refund.invoice_payload, refund.total_amount, refund.currency, refund.telegram_payment_charge_id);
   }
   if (message?.chat?.type === 'private' && /^\/paysupport(?:@\w+)?(?:\s|$)/.test(message.text ?? '')) {
-   const instructions = support ? 'Поддержка по оплате подарков: ' + support
-    : 'Для помощи с оплатой подарка обратитесь к владельцу игры и укажите дату и сумму платежа.';
+   const instructions = support ? 'Поддержка по оплате в игре: ' + support
+    : 'Для помощи с оплатой обратитесь к владельцу игры и укажите дату и сумму платежа.';
    return {method:'sendMessage', chat_id:message.chat.id, text:instructions};
   }
   return {ok:true};
@@ -96,7 +128,7 @@ export function createGiftsApi({
  async function route(req, res, path, params) {
   if (path === '/api/telegram/gifts-webhook') {
    if (req.method !== 'POST') return reply(res,405,{error:'method_not_allowed'});
-   if (!paymentsEnabled || !checkSecret(req.headers['x-telegram-bot-api-secret-token'], webhookSecret)) return reply(res,403,{error:'forbidden'});
+   if (!webhookEnabled || !checkSecret(req.headers['x-telegram-bot-api-secret-token'], webhookSecret)) return reply(res,403,{error:'forbidden'});
    return reply(res,200,await telegramUpdate(await readJson(req)));
   }
   if (path === '/api/gifts' && req.method === 'GET') {
