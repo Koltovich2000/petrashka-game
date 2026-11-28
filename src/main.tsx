@@ -1,6 +1,7 @@
+import {TadsBanner} from './TadsBanner';
+import {lightweightEffects} from './performance';
 import {NotificationSettings} from './NotificationSettings';
 import {beds} from './property';
-import {Shop} from './Shop';
 import {activityReason,activities,computerXP,isLocation,type ActivityKind,type Location} from './activities';
 import {TUTORIAL,type FoodId} from './balance';
 import {PlayerBar} from './PlayerBar';
@@ -18,18 +19,20 @@ import './style.css';
 import './redesign.css';
 import { getSoundContext, sound } from './sound';
 import {playRoomSound} from './roomSoundEffects';
-import { Wardrobe } from './WardrobeScreen';
 import { catalog,starterCloset,type Category } from './wardrobe';
 import { HomeScreen,stats } from './HomeScreen';
-import {RangeScreen} from './RangeScreen';
-import {GiftsScreen} from './GiftsScreen';
 import {rubles,playerLevel} from './economy';
 import {useGameState} from './useGameState';
 import {HospitalScreen} from './HospitalScreen';
 import {hospitalRules} from './hospital';
 import {defaultCharacterName,parseCharacterName} from './characterName';
+const Shop=lazy(()=>import('./Shop').then(m=>({default:m.Shop})));
+const Wardrobe=lazy(()=>import('./WardrobeScreen').then(m=>({default:m.Wardrobe})));
+const RangeScreen=lazy(()=>import('./RangeScreen').then(m=>({default:m.RangeScreen})));
+const GiftsScreen=lazy(()=>import('./GiftsScreen').then(m=>({default:m.GiftsScreen})));
 const AdminPanel=lazy(()=>import('./AdminPanel').then(m=>({default:m.AdminPanel})));
 const AdminDashboard=lazy(()=>import('./AdminDashboard').then(m=>({default:m.AdminDashboard})));
+document.documentElement.dataset.effects=lightweightEffects?'light':'full';
 const tabs=[{id:'wardrobe',label:'Гардероб'},{id:'range',label:'Полигон'},{id:'room',label:'Главная'},{id:'shop',label:'Магазин'},{id:'gifts',label:'Подарки'}] as const;
 function App({profile}: {profile?:TelegramProfile}){
  const playerId=profile?.id;
@@ -48,6 +51,8 @@ function App({profile}: {profile?:TelegramProfile}){
  }
 
  const [screen,setScreen]=useState<typeof tabs[number]['id']>('room');
+ const [visited,setVisited]=useState<ReadonlySet<string>>(()=>new Set(['room']));
+ useEffect(()=>{setVisited(previous=>previous.has(screen)?previous:new Set([...previous,screen]));},[screen]);
  const [notebook,setNotebook]=useState(false);
  const [adminOpen,setAdminOpen]=useState(false);
  const {game,current:ref,ready,error,commit,send,key,world,hospitalPaymentPending,hospitalAds,notifications,needsCharacterName,nameError,clearNameError}=useGameState(profile,locationRef);
@@ -71,7 +76,7 @@ function App({profile}: {profile?:TelegramProfile}){
   const current=ref.current;
   if(current.health===0)return;
   const target=event.target as Element;
-  if(screen==='range'||screen==='gifts'||target.closest('.player-bar,.world-events,.event-dialog,.bottom-nav,.locations,.range-tab,.cancel-activity,.sleep-start,.sleep-controls,.object-bed,.sound-toggle,.dev-tools,.dev-tools-toggle,.bath-sponge,.scene-pass-ball,.room-dog,.night-dog,.dog-care-panel'))return;
+  if(screen==='range'||screen==='gifts'||target.closest('.player-bar,.world-events,.event-dialog,.bottom-nav,.locations,.range-tab,.cancel-activity,.sleep-start,.sleep-controls,.object-bed,.sound-toggle,.dev-tools,.dev-tools-toggle,.bath-sponge,.scene-pass-ball,.room-dog,.night-dog,.dog-care-panel,.room-speaker'))return;
   const kind=current.roomAction?.kind;
   if(kind==='bath'){event.preventDefault();event.stopPropagation();return;}
   const text=kind==='toilet'?'Ваш персонаж в туалете':kind==='tray'?'Ваш персонаж проверяет лоток':
@@ -265,34 +270,44 @@ function App({profile}: {profile?:TelegramProfile}){
    return Boolean(result&&!result.state.dailyRewards?.some(item=>item.day===reward.day&&item.id===reward.id));
   }}/>}
  {openTourDialog&&<TourDialog section={openTourDialog} busy={tourBusy} error={tourError} onContinue={()=>void continueTour()}/>}
- <div className="game-pages" inert={world?.paused}>{tabs.map(tab=><main key={tab.id} hidden={screen!==tab.id} className="app game-page" data-screen={tab.id}>
+ <div className="game-pages" inert={world?.paused}>{tabs.map(tab=><main key={tab.id} hidden={screen!==tab.id} className="app game-page" data-screen={tab.id}><Suspense fallback={<p role="status">Загружаем…</p>}>
   {tab.id==='room'&&<>
    <HomeScreen location={location} onLocationChange={changeLocation} active={screen==='room'} wallTime={world?.now??Date.now()} game={game} outfit={closet.outfit} effect={effect} gain={gain} eatenFood={eatenFood} motionBusy={motionBusy} interact={interact} setMotionBusy={setMotionBusy} onWake={()=>void send({kind:'wake'})} onActivity={roomActivity} onCancelActivity={cancelCurrentActivity} onWashStroke={washStroke} onBallReturn={ballReturned} onFeedDog={()=>void send({kind:'feedDog'})} onMove={(id,x,y)=>void send({kind:'move',id,x,y})} guideRoot={guideActive&&inCareTutorial?shell:undefined}/>
   </>}
-  {tab.id==='wardrobe'&&<Wardrobe closet={closet} balance={game.economy.balance} level={level} wetness={wetness} onSelect={selectClothing}/>}
-  {tab.id==='shop'&&<Shop game={game} onAdoptDog={async dogName=>{
+  {tab.id==='wardrobe'&&(screen==='wardrobe'||visited.has('wardrobe'))&&<Wardrobe closet={closet} balance={game.economy.balance} level={level} wetness={wetness} onSelect={selectClothing}/>}
+  {tab.id==='shop'&&(screen==='shop'||visited.has('shop'))&&<Shop game={game} onAdoptDog={async dogName=>{
    getSoundContext();
    return Boolean((await send({kind:'adopt',dogName}))?.state.dog);
   }} onSurrenderDog={async()=>(await send({kind:'surrenderDog'}))?.state.dogCare?.sheltered===true}
    onReclaimDog={async()=>Boolean((await send({kind:'reclaimDog'}))?.state.dog)}
    onBuyDogFood={()=>void send({kind:'buyDogFood'})} onBuy={id=>void send({kind:'buyFurniture',id})}/>}
   {tab.id==='range'&&screen==='range'&&<RangeScreen outfit={closet.outfit} wetness={wetness}/>}
-  {tab.id==='gifts'&&<GiftsScreen active={screen==='gifts'}/>}
- </main>)}</div>
+  {tab.id==='gifts'&&(screen==='gifts'||visited.has('gifts'))&&<GiftsScreen active={screen==='gifts'}/>}
+ </Suspense></main>)}</div>
  <nav className="bottom-nav" aria-label="Разделы игры"><div>{tabs.map(tab=><button key={tab.id} data-guide-tab={tab.id} className={tab.id==='range'?'range-tab':undefined} disabled={onboarding&&(world?.paused||tab.id!==tourSection)} aria-current={screen===tab.id?'page':undefined} onClick={()=>openTab(tab.id)}>
   <GameIcon name={tab.id}/>{tab.label}
  </button>)}</div></nav>
+ <TadsBanner enabled={Boolean(profile)&&!onboarding}/>
  {guideActive&&tourSection&&!openTourDialog&&<TutorialSpotlight root={shell} step={sectionGuide(tourSection)}/>}
  <div className={'toast '
 +(toast||error?'visible':'')} role="status">{error||toast}</div>
  {profile&&notifications?.configured&&!notifications.prompted&&!onboarding&&!world?.paused&&!help&&<div className="overlay"><section className="modal" role="dialog" aria-modal="true" aria-label="Разрешить уведомления"><NotificationSettings status={notifications} onChange={changeNotifications} offer/></section></div>}
- {help&&<div className="overlay" onClick={()=>setHelp(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Как играть"><button className="round close" autoFocus onClick={()=>setHelp(false)}>✕</button>{profile&&notifications&&<NotificationSettings status={notifications} onChange={changeNotifications}/>}<h2>Забота — это просто 💜</h2><p>Под комнатой можно переключать локации. Коротко нажми на голову, живот, руки, ноги или ступни — Петрашка отреагирует. Правая и левая стороны считаются со стороны персонажа. Чтобы погладить, проведи пальцем или мышью по голове туда и обратно. Зажми Петрашку ниже головы и потяни: он испугается и начнёт раскачиваться. Отпусти — он упадёт на живот, встанет и вернётся в центр. Пока он спит или без сознания, поднимать его нельзя. Падение не отнимает здоровье.</p><p>Корми, гладь, мой Петрашку, играй с ним и укладывай спать. После обучения кнопка «Спать» доступна в любой комнате. Она прерывает текущее занятие. Сон продолжается до кнопки «Разбудить». Во сне потребности заморожены, скорость восстановления энергии зависит от кровати.</p><p>За 10 минут бодрствования сытость и энергия падают на 0,75 пункта, настроение и гигиена — на 0,5. За одно отсутствие учитываются максимум 12 часов. При длительном истощении здоровье теряется на 2 в час после первых двух часов.</p><p>При гигиене ≤50 мокнут штаны; ≤20 появляется запах; ≤10 — какашки. Движение мочалкой туда и обратно даёт +1 к гигиене. В прихожей коснись мяча в воздухе или на полу, чтобы вернуть его. Каждый возврат даёт +1 к настроению. Оба занятия можно продолжать при 100% и остановить кнопкой «Закончить». Начало мытья стоит 2 энергии, начало игры в мяч — 10 энергии. За компьютером в комнате Петрашка играет 10 минут и получает до {activities.computer.mood} пунктов настроения и {computerXP} XP.</p><p>Показатели в комнате показывают текущее состояние Петрашки. Гардероб доступен снизу: пять категорий, по десять вещей. Каждое полное поглаживание туда и обратно даёт +1 к настроению до 70%. Перезарядка: кормление и мячик — 30 сек. Сон доступен без перезарядки. Перезарядки сохраняются после закрытия игры.</p><p>Время идёт и без тебя. При здоровье 0% Петрашка попадает в больницу. Лечение стоит {rubles(hospitalRules.rate)} за полный час.</p>{playerId&&<p className="muted">Твой Telegram ID: <strong>{playerId}</strong></p>}<p className="muted">{profile?'Прогресс хранится на сервере и привязан к твоему аккаунту Telegram.':'В браузере прогресс и тестовая госпитализация сохраняются на этом устройстве.'}</p></section></div>}</div>;
+ {help&&<div className="overlay" onClick={()=>setHelp(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Как играть"><button className="round close" autoFocus onClick={()=>setHelp(false)}>✕</button>{profile&&notifications&&<NotificationSettings status={notifications} onChange={changeNotifications}/>}<h2>Забота — это просто 💜</h2><p>Под комнатой можно переключать локации. Коротко нажми на голову, живот, руки, ноги или ступни — Петрашка отреагирует. Правая и левая стороны считаются со стороны персонажа. Чтобы погладить, проведи пальцем или мышью по голове туда и обратно. Зажми Петрашку ниже головы и потяни: он испугается и начнёт раскачиваться. Отпусти — он упадёт на живот, встанет и вернётся в центр. Пока он спит или без сознания, поднимать его нельзя. Падение не отнимает здоровье.</p><p>Корми, гладь, мой Петрашку, играй с ним и укладывай спать. После обучения кнопка «Спать» доступна в любой комнате. Она прерывает текущее занятие. Сон продолжается до кнопки «Разбудить». Во сне потребности заморожены, скорость восстановления энергии зависит от кровати.</p><p>За 10 минут бодрствования сытость и энергия падают на 0,75 пункта, настроение и гигиена — на 0,5. За одно отсутствие учитываются максимум 12 часов. При длительном истощении здоровье теряется на 3 в час после первых двух часов.</p><p>При гигиене ≤50 мокнут штаны; ≤20 появляется запах; ≤10 — какашки. Движение мочалкой туда и обратно даёт +1 к гигиене. В прихожей коснись мяча в воздухе или на полу, чтобы вернуть его. Каждый возврат даёт +1 к настроению. Оба занятия можно продолжать при 100% и остановить кнопкой «Закончить». Начало мытья стоит 2 энергии, начало игры в мяч — 10 энергии. За компьютером в комнате Петрашка играет 10 минут и получает до {activities.computer.mood} пунктов настроения и {computerXP} XP.</p><p>Показатели в комнате показывают текущее состояние Петрашки. Гардероб доступен снизу: пять категорий, по десять вещей. Каждое полное поглаживание туда и обратно даёт +1 к настроению до 70%. Перезарядка: кормление и мячик — 30 сек. Сон доступен без перезарядки. Перезарядки сохраняются после закрытия игры.</p><p>Время идёт и без тебя. При здоровье 0% Петрашка попадает в больницу. Лечение стоит {rubles(hospitalRules.rate)} за полный час.</p>{playerId&&<p className="muted">Твой Telegram ID: <strong>{playerId}</strong></p>}<p className="muted">{profile?'Прогресс хранится на сервере и привязан к твоему аккаунту Telegram.':'В браузере прогресс и тестовая госпитализация сохраняются на этом устройстве.'}</p></section></div>}</div>;
 }
 function TelegramEntry(){
  const [profile,setProfile]=useState<TelegramProfile>();
  const [error,setError]=useState('');
  const [attempt,setAttempt]=useState(0);
- useEffect(()=>{initTelegram();},[]);
+ useEffect(()=>{
+  initTelegram();
+  const visibility=()=>{document.documentElement.toggleAttribute('data-page-hidden',document.hidden);};
+  visibility();document.addEventListener('visibilitychange',visibility);
+  const unsubscribe=onTelegramLifecycle(
+   ()=>document.documentElement.removeAttribute('data-page-hidden'),
+   ()=>document.documentElement.setAttribute('data-page-hidden',''),
+  );
+  return()=>{document.removeEventListener('visibilitychange',visibility);unsubscribe?.();};
+ },[]);
  useEffect(()=>{
   const controller=new AbortController();
   authenticateTelegram(controller.signal).then(user=>{

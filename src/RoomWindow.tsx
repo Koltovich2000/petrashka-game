@@ -47,3 +47,17 @@ export function HallWindow(){
   </g>
  </svg>;
 }
+
+export function CeilingLampOff(){
+ return <svg className="ceiling-lamp-off" viewBox="0 0 592 887" preserveAspectRatio="none" aria-hidden="true">
+  <g stroke="#302c42" strokeWidth="2">
+   <path d="M290 18V10Q297 5 305 10V18" fill="#86767b"/>
+   <path d="M240 35Q246 16 299 17Q349 18 358 35V65H240Z" fill="#796879"/>
+   <path d="M242 35Q296 20 356 35L356 57Q298 43 242 57Z" fill="#aa9092"/>
+   <path d="M258 30V53M281 26V50M307 26V50M333 30V53" fill="none" stroke="#c0adb1"/>
+   <ellipse cx="299" cy="64" rx="59" ry="20" fill="#81727d"/>
+   <ellipse cx="299" cy="64" rx="49" ry="13" fill="#c0bdcb"/>
+   <ellipse cx="299" cy="64" rx="28" ry="8" fill="#dedce7" stroke="none"/>
+  </g>
+ </svg>;
+}

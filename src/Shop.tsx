@@ -88,6 +88,7 @@ export function Shop({game,onBuy,onAdoptDog,onSurrenderDog,onReclaimDog,onBuyDog
     return <article key={item.id}>
      <FurnitureArt kind={item.id}/>
      <h4>{item.name}</h4>
+     {item.id==='hallSpeaker'&&<p>Случайный плейлист с плавными переходами. Нажми колонку в зале, чтобы включить или выключить музыку.</p>}
      {activity&&<p>{activity.minutes} мин. · ⚡ −{activity.energy} · 🍔 −{activity.food} · 🫧 −{activity.hygiene} · ☺ +{activity.mood}{activity.fitness>0&&` · Физподготовка +${activity.fitness} XP`}</p>}
      <button type="button" disabled={!canShop||owned||needsPet||locked||poor} onClick={()=>onBuy(item.id)}>{label}</button>
     </article>;

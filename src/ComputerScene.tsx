@@ -36,10 +36,10 @@ export function ComputerScene({elapsed=0,wetness}:{elapsed?:number;wetness:HairW
    <text x="578" y="224" fill="#fff0ba" fontSize="3">{Math.floor(elapsed/1000)%60}</text>
   </g>
   <svg x="395" y="146" width="244" height="291" viewBox="0 0 1148 1370">
-   <image href="/assets/computer-profile.png" width="1148" height="1370" clipPath="url(#computer-body)"/>
+   <image href="/assets/computer-profile.webp" width="1148" height="1370" clipPath="url(#computer-body)"/>
    <ComputerHair wetness={wetness}/>
-   <g transform="translate(106 0) scale(.8 1)"><g className="computer-typing"><image href="/assets/computer-profile.png" width="1148" height="1370" clipPath="url(#computer-hands)"/></g></g>
+   <g transform="translate(106 0) scale(.8 1)"><g className="computer-typing"><image href="/assets/computer-profile.webp" width="1148" height="1370" clipPath="url(#computer-hands)"/></g></g>
   </svg>
-  <image href="/assets/bedroom-navy.png" width="640" height="585" preserveAspectRatio="none" clipPath="url(#computer-chair)"/>
+  <image href="/assets/bedroom-navy.webp" width="640" height="585" preserveAspectRatio="none" clipPath="url(#computer-chair)"/>
  </svg>;
 }

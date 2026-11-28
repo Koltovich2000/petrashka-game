@@ -323,3 +323,39 @@
 .dog-care-warning{color:#ffe09f;font-size:inherit;font-variant-numeric:tabular-nums}
 .dog-care-warning[data-hungry=true]{color:#ffb6a7}
 .modern .dog-care-panel button:not(.mascot):not(.mini-stats button){min-height:34px;padding:4px 7px;font-size:inherit}
+
+/* The ceiling lights are painted into these backgrounds, so shade their glow too. */
+.ceiling-lamp-off{
+ position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;
+ opacity:var(--sun-visible);transition:opacity .8s
+}
+.photo-room:is([data-location=bathroom],[data-location=hallway]) .location-photo::after,
+.photo-room[data-location=bathroom] .bath-scene-backdrop::after{
+ content:'';position:absolute;inset:0;background:inherit;pointer-events:none;
+ mask-image:radial-gradient(ellipse 40% 19% at 50% 4%,#000 24%,transparent 100%);
+ -webkit-mask-image:radial-gradient(ellipse 40% 19% at 50% 4%,#000 24%,transparent 100%);
+ filter:saturate(.08) brightness(.77);opacity:var(--sun-visible);transition:opacity .8s
+}
+.photo-room:is([data-location=bathroom],[data-location=hallway]) .room-light::before{
+ content:'';position:absolute;inset:0;
+ background:linear-gradient(120deg,#dceeff66,transparent 60%);
+ opacity:var(--sun-visible)
+}
+.photo-room[data-location=hallway] .location-photo::before{
+ content:'';position:absolute;inset:0;background:inherit;pointer-events:none;
+ mask-image:radial-gradient(ellipse 42% 30% at 50% 79%,#000 15%,transparent 100%);
+ -webkit-mask-image:radial-gradient(ellipse 42% 30% at 50% 79%,#000 15%,transparent 100%);
+ filter:saturate(.25);opacity:var(--sun-visible)
+}
+
+.modern button.room-speaker:not(.mascot):not(.mini-stats button){
+ pointer-events:auto;cursor:pointer;padding:0;background:none;border:0;box-shadow:none;border-radius:6px;
+ touch-action:manipulation
+}
+.modern button.room-speaker:not(.mascot):not(.mini-stats button):active{transform:none}
+.room-speaker:hover .furniture-art,.room-speaker:focus-visible .furniture-art{filter:brightness(1.12) drop-shadow(0 0 3px #b395ed)}
+.room-speaker[aria-pressed=true] .speaker-led{fill:#8ef9cc}
+.room-speaker[aria-pressed=true] .speaker-woofer{animation:speaker-beat .65s ease-in-out infinite;transform-origin:31px 71px}
+@keyframes speaker-beat{50%{scale:1.07}}
+.speaker-error{position:absolute;z-index:14;left:10%;right:10%;top:12%;padding:9px;border-radius:8px;background:#211c37ee;color:#fff0e7;font:12px/1.4 system-ui;text-align:center}
+@media(prefers-reduced-motion:reduce){.room-speaker .speaker-woofer{animation:none!important}}

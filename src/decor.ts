@@ -1,4 +1,5 @@
 export const decorCatalog=[
+ {id:'hallSpeaker',art:'speaker',name:'Музыкальная колонка',location:'hall',price:2200,level:3,x:.84,y:.78,width:16,bounds:[.68,.9,.67,.88],floor:true},
  {id:'roomPlant',art:'plant',name:'Растение в горшке',location:'room',price:850,level:2,x:.36,y:.73,width:14,bounds:[.31,.45,.69,.79],floor:true},
  {id:'roomRug',art:'rug',name:'Ковёр для комнаты',location:'room',price:1250,level:2,x:.52,y:.90,width:45,bounds:[.4,.62,.86,.92],floor:false},
  {id:'entryPrint',art:'picture',name:'Картина с городом',location:'hallway',price:550,level:2,x:.23,y:.39,width:17,bounds:[.14,.36,.33,.46],floor:false},

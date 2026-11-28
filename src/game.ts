@@ -29,6 +29,7 @@ export function changeStat(game:Game,stat:Stat,delta:number){
 // Called on a new game-state object. Preserve independent limits for the other stats.
 export function setAdminStat(game:Game,stat:Stat,value:number){
  game[stat]=value;
+ if(stat==='health'&&value===0)game.protectedUntil=0;
  if(value>statLimit(game,stat))game.statLimits={...game.statLimits,[stat]:Math.ceil(value)};
  if(!game.introCompleted&&!game.introEdits?.includes(stat))game.introEdits=[...(game.introEdits??[]),stat];
 }

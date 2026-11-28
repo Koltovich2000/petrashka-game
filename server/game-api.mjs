@@ -99,6 +99,9 @@ export function createGameApi({botToken,admins,databasePath=process.env.GAME_DB_
    const store=await getStore();
    if(command.kind==='pause')await store.world.setPause(command.paused,clock);
    else if(command.kind==='removePoll')await store.world.removePoll(command.id,clock);
+   else if(command.kind==='manualVotes'){
+    if(!await store.world.setManualVotes(command.id,command.counts,adminId,clock))throw conflict('poll_closed');
+   }
    else if(!await store.world.createPoll(command,clock))throw conflict('poll_already_running');
    return worldState(await store.world.snapshot(clock,adminId,true));
   },

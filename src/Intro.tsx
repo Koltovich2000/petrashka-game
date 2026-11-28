@@ -3,9 +3,9 @@ import {PixelAvatar} from './PixelAvatar';
 import {defaultOutfit} from './wardrobe';
 import {defaultCharacterName,maxCharacterNameLength,parseCharacterName} from './characterName';
 
-import farewell from './assets/intro/farewell.jpg';
-import train from './assets/intro/train.jpg';
-import apartment from './assets/intro/apartment.jpg';
+import farewell from './assets/intro/farewell.webp';
+import train from './assets/intro/train.webp';
+import apartment from './assets/intro/apartment.webp';
 
 const scenes = [
   {

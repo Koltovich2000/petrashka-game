@@ -44,8 +44,8 @@ function download(kind:Recording){
  return task;
 }
 
-export function preloadTrapRecordings(){
- for(const kind of [...Object.keys(volume) as (keyof typeof volume)[],...wallClips,...batClips])void download(kind).catch(()=>{});
+export function prepareTrapRecording(kind:Recording){
+ return download(kind);
 }
 
 export function playImpactRecording(audio:AudioContext,output:AudioNode){
@@ -67,7 +67,7 @@ export function playBatImpact(audio:AudioContext,output:AudioNode){
 export function playTrapRecording(audio:AudioContext,output:AudioNode,kind:Recording){
  let task=decoded.get(kind);
  if(!task){
-  task=download(kind).then(data=>audio.decodeAudioData(data.slice(0)))
+  task=download(kind).then(data=>{downloads.delete(kind);return audio.decodeAudioData(data);})
    .catch(error=>{decoded.delete(kind);downloads.delete(kind);throw error;});
   decoded.set(kind,task);
  }

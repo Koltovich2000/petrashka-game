@@ -3,7 +3,7 @@ import {beds,type BedUpgrade} from './property';
 import {catalog,categoryKeys,defaultOutfit,removePurchasedClothing,starterCloset,type Category} from './wardrobe';
 import type {Game} from './game';
 
-export const hospitalRules={hour:3_600_000,rate:100,ads:2,protection:6*3_600_000,
+export const hospitalRules={hour:3_600_000,rate:100,ads:3,protection:6*3_600_000,
  recovery:{health:50,energy:30,food:30,mood:20,hygiene:30}} as const;
 
 type Asset={name:string;price:number}&(

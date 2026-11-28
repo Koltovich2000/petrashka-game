@@ -40,6 +40,10 @@ export function createAppServer({
    path = decodeURIComponent(url.pathname);
   } catch {return json(res,400,{error:'invalid_path'});}
 
+  if(path==='/api/config'&&req.method==='GET'){
+   const id=Number(process.env.TADS_BANNER_WIDGET_ID);
+   return json(res,200,{tadsWidgetId:Number.isSafeInteger(id)&&id>0?id:null});
+  }
   if (path === '/healthz' && req.method === 'GET') return json(res,200,{ok:true});
   if (path === '/api/game') return game.handle(req,res);
   if (path === '/api/hospital/ad-reward') return game.hospitalAdReward(req,res,url.searchParams);
@@ -83,13 +87,32 @@ export function createAppServer({
   if (!file.startsWith(resolve(dist)+sep) || path.includes('\0') || path.includes('\\')) return json(res,404,{error:'not_found'});
   const info = await stat(file).catch(()=>null);
   if (!info?.isFile()) return json(res,404,{error:'not_found'});
-  res.writeHead(200,{
+  const headers={
    'Content-Type':types[extname(file)] ?? 'application/octet-stream',
    'Content-Length':info.size,
    'Cache-Control':extname(file)==='.html'?'no-cache':'public, max-age=3600',
-  });
+  };
+  let start=0,end=info.size-1,status=200;
+  if(headers['Content-Type'].startsWith('audio/')){
+   headers['Accept-Ranges']='bytes';
+   if(req.headers.range){
+    const match=/^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
+    const suffix=match&&match[1]==='';
+    start=match?(suffix?Math.max(0,info.size-Number(match[2])):Number(match[1])):NaN;
+    end=match&&!suffix&&match[2]!==''?Math.min(info.size-1,Number(match[2])):info.size-1;
+    if(!match||!match[1]&&!match[2]||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||
+     suffix&&Number(match[2])<=0||start>end||start>=info.size){
+     res.writeHead(416,{'Content-Range':`bytes */${info.size}`,'Accept-Ranges':'bytes','Content-Length':0});
+     return res.end();
+    }
+    status=206;
+    headers['Content-Range']=`bytes ${start}-${end}/${info.size}`;
+    headers['Content-Length']=end-start+1;
+   }
+  }
+  res.writeHead(status,headers);
   if (req.method === 'HEAD') return res.end();
-  createReadStream(file).on('error',()=>res.destroy()).pipe(res);
+  createReadStream(file,{start,end:Math.max(start,end)}).on('error',()=>res.destroy()).pipe(res);
  });
  server.once('listening',()=>{void game.logStorage();game.notifications.start();});
  server.on('close',() => {gifts.close();game.close();});

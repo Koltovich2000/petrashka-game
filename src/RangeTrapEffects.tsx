@@ -1,3 +1,4 @@
+import {lightweightEffects} from './performance';
 import {memo,type CSSProperties,type RefObject} from 'react';
 import {rangeTraps,type TrapKind,type TrapStrike} from './rangeTraps';
 import {RangePoopIcon} from './RangePoopEffects';
@@ -45,10 +46,10 @@ const TrapArt=memo(function TrapArt({kind,icon=false}:{kind:TrapKind;icon?:boole
  </svg>;
 });
 
-export function RangeTrapPanel({active,activate,poopSelected,selectPoop}:{active:ReadonlySet<TrapKind>;activate:(kind:TrapKind)=>void;poopSelected:boolean;selectPoop:()=>void}){
+export function RangeTrapPanel({active,activate,prepare,poopSelected,selectPoop}:{prepare:(kind:TrapKind)=>void;active:ReadonlySet<TrapKind>;activate:(kind:TrapKind)=>void;poopSelected:boolean;selectPoop:()=>void}){
  return <div className="range-trap-panel" role="group" aria-label="Ловушки и метательное оружие">
   {kinds.map(kind=><button type="button" key={kind} aria-label={kind==='saw'?'Циркулярная пила':undefined}
-   data-trap-button={kind} disabled={active.has(kind)} data-running={active.has(kind)||undefined} onClick={()=>activate(kind)}>
+   onPointerEnter={()=>prepare(kind)} onPointerDown={()=>prepare(kind)} onFocus={()=>prepare(kind)} data-trap-button={kind} disabled={active.has(kind)} data-running={active.has(kind)||undefined} onClick={()=>activate(kind)}>
    <TrapArt kind={kind} icon/><span>{rangeTraps[kind].name}</span>
   </button>)}
   <button type="button" className="range-poop-button" aria-pressed={poopSelected} onClick={selectPoop}>
@@ -77,9 +78,11 @@ export type RangeBurstEffect={id:number;kind:TrapStrike|'collision';x:number;y:n
 export function makeRangeBurst(id:number,kind:RangeBurstEffect['kind'],x:number,y:number):RangeBurstEffect{
  const count=kind==='weight'?17:13;
  const sparks=kind==='saw'?8:kind==='weight'?5:kind==='spikes'?3:2;
+ const shownCount=lightweightEffects?Math.ceil(count/2):count;
+ const shownSparks=lightweightEffects?Math.ceil(sparks/2):sparks;
  const reds=['#b7193d','#ff365a','#eb1944','#ff6079'];
- const particles=Array.from({length:count+sparks},(_,i)=>{
-  const spark=i>=count,angle=(i/count+Math.random()*.2)*Math.PI*2;
+ const particles=Array.from({length:shownCount+shownSparks},(_,i)=>{
+  const spark=i>=shownCount,angle=(i/shownCount+Math.random()*.2)*Math.PI*2;
   const speed=(kind==='weight'?112:80)*(.22+Math.random()*.85);
   return {x:Math.cos(angle)*speed,y:Math.sin(angle)*speed*.64-(spark?10:21),size:spark?3+Math.random()*4:5+Math.random()*7,
    alpha:spark?.85:1,color:spark?['#ffe68a','#fff2c7','#ffaa52'][i%3]:reds[i%4],spin:(Math.random()-.5)*410};

@@ -1,7 +1,7 @@
 let context:AudioContext|undefined;
 let muted=false;
 export function isSoundMuted(){return muted;}
-export function muteSound(value:boolean){muted=value;}
+export function muteSound(value:boolean){muted=value;if(typeof window!=='undefined')window.dispatchEvent(new Event('petrashka-sound-change'));}
 export function getSoundContext(unlock=true){if(muted)return;if(unlock)unlockSound();return context;}
 export function unlockSound(){try{context??=new AudioContext();void context.resume().catch(()=>{});}catch{}}
 export function sound(kind:string){if(muted)return;unlockSound();if(!context)return;const c=context;const start=c.currentTime;const osc=c.createOscillator();const gain=c.createGain();const tones:Record<string,number>={lift:620,fall:90,pet:660,sleep:220,wash:820,play:550,heal:740};const f=tones[kind]??360;osc.type=kind==='fall'?'triangle':'sine';osc.frequency.setValueAtTime(f,start);osc.frequency.exponentialRampToValueAtTime(kind==='lift'?1000:Math.max(45,f*.45),start+.18);gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(.09,start+.008);gain.gain.exponentialRampToValueAtTime(.001,start+.23);osc.connect(gain);gain.connect(c.destination);osc.start(start);osc.stop(start+.25);osc.onended=()=>{osc.disconnect();gain.disconnect();};}

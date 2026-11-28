@@ -29,7 +29,7 @@ const shapes:Record<string,[string,string,string?]>={
  accessory:['M2 8H10V16H2ZM14 8H22V16H14ZM10 10H14','#bfc9ef'],
 };
 export function GameIcon({name}:{name:string}){
- if(name==='ball')return <img className="game-icon football-icon" src="/assets/football.png" alt="" draggable={false}/>;
+ if(name==='ball')return <img className="game-icon football-icon" src="/assets/football.webp" alt="" draggable={false}/>;
  const icon=shapes[name];
  if(!icon)return <PixelIcon kind={name==='feed'?'food':name}/>;
  const [path,color,detail]=icon;

@@ -1,4 +1,5 @@
-import {useEffect,useRef,useState,type ReactNode,type PointerEvent,type CSSProperties} from 'react';
+import {playPoopSound,preparePoopSounds,stopPoopSounds} from './rangePoopSound';
+import {memo,useEffect,useRef,useState,type ReactNode,type PointerEvent,type CSSProperties} from 'react';
 import type {Hit} from './body';
 import {reactions} from './body';
 import {PixelAvatar,type AvatarLayer} from './PixelAvatar';
@@ -9,7 +10,7 @@ import {anchorRangeMark,RANGE_BALANCE,freshRange,regrowPart,hitRange,rangePart,t
 import {floorFraction,floorReserve,rangeFloor,resolveContacts,wallInset,type BodyBox,type Contact} from './rangeContacts';
 import {useRangePieces} from './useRangePieces';
 import {useRangeTraps} from './useRangeTraps';
-import {playBatImpact,playImpactRecording,playSawCloth,playTrapRecording,preloadTrapRecordings} from './rangeTrapSound';
+import {playBatImpact,playImpactRecording,playSawCloth,playTrapRecording,prepareTrapRecording} from './rangeTrapSound';
 import {makeRangeBurst,RangeBursts,RangeTrapActors,RangeTrapPanel,type RangeBurstEffect} from './RangeTrapEffects';
 import {poopFlightTime,RangePoopProjectile,RangePoopSplat,type PoopThrow} from './RangePoopEffects';
 import type {Outfit} from './wardrobe';
@@ -219,13 +220,13 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
 
  useEffect(()=>{
   const pending=timers.current;
-  preloadTrapRecordings();
   const removeExpired=()=>{
    setDamages(current=>current.filter(damage=>damage.expiresAt>performance.now()));
-   if(document.hidden)timedTraps.forEach(stopTrapSound);
+   if(document.hidden){timedTraps.forEach(stopTrapSound);stopPoopSounds();}
   };
   document.addEventListener('visibilitychange',removeExpired);
   return ()=>{
+   stopPoopSounds();
    pending.forEach(timer=>window.clearTimeout(timer));
    pending.clear();
 
@@ -348,6 +349,11 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   const aim=follow();
   if(!aim)return;
   const id=++sequence.current,miss=Math.random()>=.7;
+  const sound=rangeAudio();
+  if(sound){
+   playPoopSound('throw',sound.audio,sound.output);
+   if(miss)playPoopSound('miss',sound.audio,sound.output);
+  }
   const width=arena.clientWidth,height=arena.clientHeight;
   const side=aim.x<width*.68?-1:1;
   const from={x:width*(side<0?.92:.08),y:rangeFloor(height)-13};
@@ -365,7 +371,10 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   },poopFlightTime*.43);
   setPoopThrows(current=>[...current,{id,from,aim,arc:limit(Math.abs(aim.x-from.x)*.22,26,78),miss,follow,finish:()=>{
    setPoopThrows(shots=>shots.filter(shot=>shot.id!==id));
-   if(!miss&&!collapsing.current&&follow())addDamage(target,'splat',1,false,false);
+   if(!miss&&!collapsing.current&&follow()){
+    addDamage(target,'splat',1,false,false);
+    if(sound)playPoopSound('hit',sound.audio,sound.output);
+   }
   }}]);
  }
  function attack(target:Target){
@@ -374,6 +383,7 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
   const id=++sequence.current,kind=weapon.id;
   const sound=rangeAudio();
   if(kind==='pistol')prepareRangeShot();
+  else if(kind==='bat')void prepareTrapRecording('bat-hit-1').catch(()=>{});
   setSwing({id,target});
   after(()=>setSwing(current=>current?.id===id?null:current),kind==='bat'?360:260);
   after(()=>{
@@ -388,6 +398,10 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
 
  function selectWeapon(index:number){
   if(index===selected)return;
+  if(index===poopWeaponIndex){
+   const sound=rangeAudio();
+   if(sound)preparePoopSounds(sound.audio);
+  }
   setSelected(index);
   setSwing(null);
   physics.onWeaponChange(traps.active.size>0);
@@ -423,7 +437,10 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
    <div className="range-boundaries" aria-hidden="true"/>
    {surfaceTouch&&<div key={surfaceTouch.id} className="range-contact" data-side={surfaceTouch.side} aria-hidden="true"
     style={{'--contact-x':`${surfaceTouch.x}px`,'--contact-y':`${surfaceTouch.y}px`} as CSSProperties}/>}
-   <RangeTrapPanel active={traps.active} poopSelected={weapon.id==='poop'} selectPoop={()=>selectWeapon(poopWeaponIndex)} activate={kind=>{
+   <RangeTrapPanel active={traps.active} prepare={kind=>{
+    const recordings=kind==='spikes'?['spikes-first','spikes-repeat'] as const:kind==='weight'?['weight-fall','weight-impact'] as const:[timedTrapRecordings[kind]];
+    for(const recording of recordings)void prepareTrapRecording(recording).catch(()=>{});
+   }} poopSelected={weapon.id==='poop'} selectPoop={()=>selectWeapon(poopWeaponIndex)} activate={kind=>{
     if(!traps.start(kind))return;
     const sound=rangeAudio();
     if(sound&&kind!=='spikes'){
@@ -459,7 +476,7 @@ export function RangeScreen({outfit,wetness}:{outfit:Outfit;wetness:HairWetness}
  </section>;
 }
 
-function RangeBackdrop(){
+const RangeBackdrop=memo(function RangeBackdrop(){
  return <svg className="range-backdrop" viewBox="0 0 800 700" preserveAspectRatio="none" aria-hidden="true">
   <defs>
    <linearGradient id="range-metal" x2="0" y2="1"><stop stopColor="#141729"/><stop offset="1" stopColor="#393052"/></linearGradient>
@@ -480,4 +497,4 @@ function RangeBackdrop(){
   <path d="M660 436H752V499H660ZM702 500V545M674 545H730" fill="#27243d" stroke="#8b73a3" strokeWidth="5"/>
   <path d="M676 454h58M676 467h40M676 480h49" stroke="#a085c2" strokeWidth="4"/>
  </svg>;
-}
+});

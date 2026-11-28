@@ -163,7 +163,7 @@ test('a hospital Stars payment is bound to the payer and stay, survives restart 
  assert.equal((await game(456)).data.state.economy.balance,0);
 });
 
-test('hospital discharge requires two distinct Adsun confirmations for the active stay',async t=>{
+test('hospital discharge requires three distinct Adsun confirmations for the active stay',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'petrashka-hospital-ads-'));
  const databasePath=join(directory,'game.sqlite');
  const origin=1_700_000_000_000;
@@ -225,6 +225,19 @@ test('hospital discharge requires two distinct Adsun confirmations for the activ
  const second=Math.floor(now/1000);
  assert.equal((await reward(second)).status,200);
  assert.equal((await reward(second)).status,200);
+ const afterSecond=(await game()).data;
+ assert.equal(afterSecond.hospitalAds.watched,2);
+ assert.ok(afterSecond.state.hospital);
+ server.emit('close');
+ server=createAppServer(options);
+ assert.equal((await game()).data.hospitalAds.watched,2);
+ now+=1_000;
+ assert.ok((await start()).data.hospitalAdAttempt);
+ await reward(second);
+ assert.equal((await game()).data.hospitalAds.watched,2);
+ now+=15_000;
+ const third=Math.floor(now/1000);
+ await Promise.all([reward(third),reward(third)]);
  const discharged=(await game()).data;
  assert.equal(discharged.state.hospital,null);
  assert.equal(discharged.hospitalAds,undefined);
@@ -417,6 +430,21 @@ test('global pause and poll survive server reopen, while voting and its deadline
  assert.deepEqual((await game({kind:'vote',pollId:id,choice:1})).data.world.poll.counts,[1,0]);
  assert.equal((await game(undefined,'333')).data.world.poll.counts,null);
  assert.equal((await game(undefined,'333')).data.world.poll.totalVotes,1);
+ const manual={kind:'manualVotes',id,counts:[7,2]};
+ assert.equal((await request('/api/admin/world','222',manual)).status,403);
+ assert.equal((await world({...manual,counts:[-1,0]})).status,400);
+ assert.equal((await world({...manual,counts:[1]})).status,400);
+ const manualResults=await Promise.all([world(manual),world(manual)]);
+ for(const result of manualResults){
+  assert.deepEqual(result.data.poll.counts,[8,2]);
+  assert.deepEqual(result.data.poll.manualCounts,[7,2]);
+ }
+ assert.deepEqual((await game()).data.world.poll.counts,[8,2]);
+ assert.equal((await game()).data.world.poll.manualCounts,undefined);
+ server.emit('close');server=createAppServer(options);
+ assert.deepEqual((await world()).data.poll.counts,[8,2]);
+ assert.deepEqual((await world({...manual,counts:[0,0]})).data.poll.counts,[1,0]);
+
 
  server.emit('close');
  server=createAppServer(options);
@@ -432,6 +460,7 @@ test('global pause and poll survive server reopen, while voting and its deadline
  assert.equal(resumed.data.world.paused,false);
  assert.deepEqual((await game(undefined,'333')).data.world.poll.counts,[1,0]);
  assert.equal((await game({kind:'vote',pollId:id,choice:1},'333')).status,409);
+ assert.equal((await world({kind:'manualVotes',id,counts:[3,0]})).status,409);
 
  // Early resume closes a linked poll, reveals its final count and rejects further votes.
  assert.equal((await world(paused)).data.paused,true);
@@ -524,4 +553,20 @@ test('character names are unique in concurrent requests and legacy conflicts kee
  assert.equal((await choose(loser,'зефир')).status,409);
  assert.equal((await choose(loser,'Мармелад')).data.state.characterName,'Мармелад');
  assert.equal((await choose('555','Лисе\u0308нок')).status,409);
+});
+
+
+test('admin zero health bypasses hospital protection through player edit and bulk adjustment',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'petrashka-zero-health-'));
+ const databasePath=join(directory,'game.sqlite'),now=Date.now();
+ const api=createGameApi({botToken:'test-token',admins:new Set(['111']),databasePath,databaseUrl:'',clock:()=>now});
+ t.after(async()=>{await api.close();await rm(directory,{recursive:true,force:true});});
+ const store=await openGameStore(databasePath);
+ for(const id of ['222','333'])await store.change(id,()=>({state:{...fresh(now),protectedUntil:now+6*hour},events:[]}));
+ await store.close();
+ const edit=await api.editPlayer('222','111',randomUUID(),{kind:'edit',values:{health:0}});
+ assert.equal(edit.values.health,0);assert.equal(edit.hospitalized,true);
+ await api.adjustPlayers('111',randomUUID(),{delta:-100,fields:['health']});
+ const player=await api.player('333');
+ assert.equal(player.values.health,0);assert.equal(player.hospitalized,true);
 });

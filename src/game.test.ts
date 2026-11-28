@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fresh,advance,act,adoptDog,parseSave,feeling,beginTutorial,feed,wake,rest,foodReason,hygieneStage,blocked,cancelActivity,recordFloorMess,KEY,type Game} from './game';
+import {fresh,advance,act,adoptDog,parseSave,feeling,beginTutorial,feed,wake,rest,foodReason,hygieneStage,blocked,cancelActivity,recordFloorMess,KEY,setAdminStat,type Game} from './game';
 import {applyClothing} from './economy';
 import {TUTORIAL,xpProgress,levelRequirement} from './balance';
 test('пять нужд: точный десятиминутный тик и дробные остатки',()=>{
@@ -19,9 +19,9 @@ test('офлайн ограничен 12 часами, повторный вхо
 });
 test('истощение: два часа отсрочки, общий штраф и экстренная госпитализация',()=>{
  const g={...fresh(0),food:0,energy:0};
- assert.equal(advance(g,7200000).health,100);assert.equal(advance(g,10800000).health,98);
- assert.equal(advance({...g,health:31},12*3600000,true).health,11);
- assert.equal(advance({...g,health:25},12*3600000,true).health,5);
+ assert.equal(advance(g,7200000).health,100);assert.equal(advance(g,10800000).health,97);
+ assert.equal(advance({...g,health:41},12*3600000,true).health,11);
+ assert.equal(advance({...g,health:35},12*3600000,true).health,5);
  assert.equal(advance({...g,health:2},10800000).health,0);
 });
 test('сон без таймера: заморозка, энергия, явное пробуждение',()=>{
@@ -787,4 +787,23 @@ test('приют сохраняет собаку, а выкуп восстана
  assert.equal(returned.dogFood,3);
  assert.equal(returned.economy.balance,25);
  assert.equal(runGameCommand(returned,{kind:'reclaimDog'},now,'room').economy.balance,25);
+});
+
+
+test('ручное обнуление здоровья отменяет защиту после выписки и госпитализирует',()=>{
+ const now=3_600_000;
+ const game={...fresh(now),protectedUntil:now+6*3_600_000,sleepUntil:-1};
+ setAdminStat(game,'health',0);
+ const result=advance(game,now);
+ assert.equal(result.health,0);
+ assert.equal(result.hospital?.startedAt,now);
+ assert.equal(result.sleepUntil,null);
+});
+
+test('после нескольких дней отсутствия учитываются 12 часов истощения, затем расход продолжается онлайн',()=>{
+ const hour=3_600_000;
+ const game={...fresh(0),health:74,food:0,energy:0,hygiene:0,mood:0};
+ const returned=advance(game,4*24*hour,true);
+ assert.equal(returned.health,44);
+ assert.equal(advance(returned,returned.updated+hour).health,41);
 });

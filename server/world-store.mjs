@@ -12,6 +12,11 @@ export const worldTables=`
  CREATE TABLE IF NOT EXISTS petrashka_votes (
   poll_id TEXT NOT NULL, player_id TEXT NOT NULL, choice INTEGER NOT NULL,
   PRIMARY KEY(poll_id,player_id)
+ );
+ CREATE TABLE IF NOT EXISTS petrashka_manual_votes (
+  poll_id TEXT NOT NULL REFERENCES petrashka_polls(id), choice INTEGER NOT NULL,
+  votes INTEGER NOT NULL, admin_id TEXT NOT NULL, updated_at BIGINT NOT NULL,
+  PRIMARY KEY(poll_id,choice)
  )`;
 
 const lastPoll=`SELECT p.*, c.poll_id AS control_id, c.pause_started_at, c.closed_at, r.poll_id AS removed_id
@@ -60,8 +65,13 @@ export function worldStore(transaction){
     const endsAt=deadline(poll);
     const counts=options.map(()=>0);
     for(const row of yield [countVotes,poll.id])counts[row.choice]=Number(row.votes);
+    const manualCounts=options.map(()=>0);
+    for(const row of yield ['SELECT choice,votes FROM petrashka_manual_votes WHERE poll_id=?',poll.id]){
+     manualCounts[row.choice]=Number(row.votes);
+     counts[row.choice]+=Number(row.votes);
+    }
     snapshot.poll={id:poll.id,question:poll.question,options,endsAt,choice:vote?.choice??null,
-     counts:admin||vote||endsAt<=now?counts:null,totalVotes:counts.reduce((sum,value)=>sum+value,0)};
+     counts:admin||vote||endsAt<=now?counts:null,totalVotes:counts.reduce((sum,value)=>sum+value,0),...(admin?{manualCounts}:{})};
     return snapshot;
    });
   },
@@ -99,6 +109,21 @@ export function worldStore(transaction){
     const startedAt=Math.max(now,Number(poll?.started_at??-1)+1);
     yield ['INSERT INTO petrashka_polls VALUES (?,?,?,?,?)',command.id,command.question,options,startedAt,startedAt+command.duration];
     yield ['INSERT INTO petrashka_poll_control (poll_id,pause_started_at) VALUES (?,?)',command.id,pause?.started_at??null];
+    return true;
+   });
+  },
+  async setManualVotes(id,counts,adminId,clock){
+   return transaction(function* (){
+    const now=clock();
+    const {poll}=yield* settleWorld(now);
+    if(!poll||poll.id!==id||poll.removed_id||deadline(poll)<=now||
+     !Array.isArray(counts)||counts.length!==JSON.parse(poll.options).length||
+     counts.some(value=>!Number.isSafeInteger(value)||value<0||value>1_000_000))return false;
+    for(let choice=0;choice<counts.length;choice++){
+     yield [`INSERT INTO petrashka_manual_votes VALUES (?,?,?,?,?)
+      ON CONFLICT(poll_id,choice) DO UPDATE SET votes=excluded.votes,admin_id=excluded.admin_id,updated_at=excluded.updated_at`,
+      id,choice,counts[choice],adminId,now];
+    }
     return true;
    });
   },

@@ -2,7 +2,28 @@ import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {PollResults,remainingTime,useWorldClock} from './GameEvents';
 import {pollLimits,type WorldState} from './world';
 
-export type WorldCommand={kind:'pause';paused:boolean}|{kind:'poll';id:string;question:string;options:string[];minutes:number}|{kind:'removePoll';id:string};
+export type WorldCommand={kind:'pause';paused:boolean}|{kind:'poll';id:string;question:string;options:string[];minutes:number}|{kind:'removePoll';id:string}|{kind:'manualVotes';id:string;counts:number[]};
+function ManualVotes({poll,busy,submit}:{poll:NonNullable<WorldState['poll']>;busy:boolean;submit:(command:WorldCommand)=>Promise<boolean>}){
+ const [counts,setCounts]=useState(()=>poll.options.map((_,i)=>String(poll.manualCounts?.[i]??0)));
+ const [dirty,setDirty]=useState(false);
+ useEffect(()=>{
+  if(!dirty)setCounts(poll.options.map((_,i)=>String(poll.manualCounts?.[i]??0)));
+ },[poll,dirty]);
+ const valid=counts.every(value=>/^\d+$/.test(value)&&Number.isSafeInteger(Number(value))&&Number(value)<=1_000_000);
+ return <form className="admin-edit" onSubmit={async event=>{
+  event.preventDefault();
+  if(valid&&await submit({kind:'manualVotes',id:poll.id,counts:counts.map(Number)}))setDirty(false);
+ }}>
+  <h3>Добавленные вручную голоса</h3>
+  <p>Укажи количество дополнительных голосов за каждый вариант. Они прибавляются к голосам игроков. Повторное сохранение задаёт указанное количество.</p>
+  {poll.options.map((option,index)=><label key={index}>{option}
+   <input type="number" min={0} max={1_000_000} step={1} inputMode="numeric" required disabled={busy} value={counts[index]}
+    onChange={event=>{setDirty(true);setCounts(values=>values.map((value,i)=>i===index?event.target.value:value));}}/>
+  </label>)}
+  <button type="submit" disabled={busy||!valid||!dirty}>Сохранить голоса</button>
+ </form>;
+}
+
 type Props={world?:WorldState;busy:boolean;submit:(command:WorldCommand)=>Promise<boolean>;refresh:()=>void};
 
 export function AdminWorld({world,busy,submit,refresh}:Props){
@@ -47,6 +68,7 @@ export function AdminWorld({world,busy,submit,refresh}:Props){
    <p>{poll.question}</p>
    {active&&<p>До окончания {remainingTime(poll.endsAt,now)}</p>}
    <PollResults poll={poll}/>
+   {active&&<ManualVotes key={poll.id} poll={poll} busy={busy} submit={submit}/>}
    <button type="button" disabled={busy} onClick={refresh}>Обновить результаты</button>
    {removeId===poll.id&&<>
     <p>Удалить голосование у всех игроков?</p>

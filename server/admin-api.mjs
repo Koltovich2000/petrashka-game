@@ -41,6 +41,10 @@ function playerCommand(body){
 }
 
 function worldCommand(body){
+ if(body?.kind==='manualVotes'&&typeof body.id==='string'&&operationId.test(body.id)&&Array.isArray(body.counts)&&
+  body.counts.length>=2&&body.counts.length<=pollLimits.options&&body.counts.every(value=>Number.isSafeInteger(value)&&value>=0&&value<=1_000_000)){
+  return {kind:'manualVotes',id:body.id,counts:body.counts};
+ }
  if(body?.kind==='pause'&&typeof body.paused==='boolean')return {kind:'pause',paused:body.paused};
  if(body?.kind==='removePoll'&&typeof body.id==='string'&&operationId.test(body.id))return {kind:'removePoll',id:body.id};
  if(body?.kind!=='poll'||typeof body.id!=='string'||!operationId.test(body.id)||

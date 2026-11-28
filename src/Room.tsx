@@ -1,3 +1,4 @@
+import {useSpeaker} from './useSpeaker';
 import {ToiletRearAvatar,ToiletScene,type ToiletPhase} from './ToiletScene';
 import {ComputerScene} from './ComputerScene';
 import {BathScene} from './BathScene';
@@ -8,7 +9,7 @@ import {Dog,type DogBallPartner} from './Dog';
 import type {DogMess} from './dogSchedule';
 import {FoodPicture} from './FoodTray';
 import type {FoodId} from './balance';
-import {HallWindow,RoomWindow} from './RoomWindow';
+import {CeilingLampOff,HallWindow,RoomWindow} from './RoomWindow';
 import {roomLighting} from './roomLighting';
 import {RoomObjects} from './RoomObjects';
 import {activities,activityLocation,activityReason,locationLabels,BATH_READY_AT,type ActivityKind,type FurnitureId,type Location} from './activities';
@@ -67,6 +68,7 @@ interface Props {
 }
 export function Room(p:Props){
  const {location}=p;
+ const speaker=useSpeaker(Boolean(p.game.furniture.hallSpeaker)&&p.game.health>0);
  const stage=useRef<HTMLElement>(null);const actor=useRef<HTMLDivElement>(null);const m=useRef(resting());const [motion,setMotion]=useState(resting);
  const dogBallPartner=useRef<DogBallPartner>(null);
  const floorMesses=useRef<HTMLDivElement>(null);
@@ -82,7 +84,16 @@ export function Room(p:Props){
  const target=useRef({x:0,y:0});const pointer=useRef<{id:number;startX:number;startY:number;offsetX:number;offsetY:number;dragged:boolean;headStroke:HeadStroke|null;movedOnHead?:boolean;part:Hit}|null>(null);
  const hold=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);const raf=useRef(0);
  function bounds(){const r=stage.current!.getBoundingClientRect();const size=actor.current!.offsetWidth;return {limit:Math.max(0,(r.width-size)/2),top:-Math.max(0,r.height-size-110),r};}
- function reset(){clearTimeout(hold.current);pointer.current=null;m.current=resting();target.current={x:0,y:0};setMotion({...m.current});props.current.onBusy(false);}
+ function paintMotion(){
+  const node=stage.current,s=m.current;
+  if(!node)return;
+  node.style.setProperty('--motion-x',`${s.x}px`);
+  node.style.setProperty('--motion-y',`${s.y}px`);
+  node.style.setProperty('--motion-tilt',`${s.tilt}deg`);
+  node.style.setProperty('--shadow-scale',String(Math.max(.45,1+s.y/400)));
+  node.style.setProperty('--shadow-opacity',String(Math.max(.15,.55+s.y/500)));
+ }
+ function reset(){cancelAnimationFrame(raf.current);raf.current=0;clearTimeout(hold.current);pointer.current=null;m.current=resting();target.current={x:0,y:0};paintMotion();setMotion({...m.current});props.current.onBusy(false);}
  function walkToDoor(){
   if(m.current.phase!=='idle'||pointer.current||location!=='hallway')return;
   m.current={...resting(),phase:'door'};
@@ -100,7 +111,7 @@ export function Room(p:Props){
   const timer=window.setTimeout(()=>setSleepWalking(false),sleepWalkMs);
   return()=>window.clearTimeout(timer);
  },[p.sleeping]);
- function begin(){const ptr=pointer.current;if(!ptr||ptr.part==='head')return;ptr.dragged=true;m.current.phase='dragging';m.current.elapsed=0;props.current.onBusy(true);haptic();sound('lift');}
+ function begin(){const ptr=pointer.current;if(!ptr||ptr.part==='head')return;ptr.dragged=true;m.current.phase='dragging';m.current.elapsed=0;setMotion({...m.current});props.current.onBusy(true);haptic();sound('lift');}
  function characterPart(e:PointerEvent<HTMLButtonElement>){
   const rect=e.currentTarget.getBoundingClientRect();
   return bodyPart((e.clientX-rect.left)/rect.width,(e.clientY-rect.top)/rect.height);
@@ -150,7 +161,9 @@ export function Room(p:Props){
   if(!p.careMode)react(part);
  }
  function react(part:Hit|null){if(!part||(m.current.phase!=='idle'&&m.current.phase!=='reacting')||props.current.sleeping||props.current.game.roomAction||props.current.game.restUntil!==null||props.current.state==='faint')return;setHitCount(n=>n+1);playHitSound();setHit(part);m.current.phase='reacting';m.current.elapsed=0;props.current.onBusy(true);setMotion({...m.current});haptic();}
- useEffect(()=>{let previous=performance.now();
+ useEffect(()=>{
+  if(!p.active||motion.phase==='idle'||document.hidden)return;
+  let previous=performance.now();
   const frame=(now:number)=>{const dt=Math.min((now-previous)/1000,.032);previous=now;const s=m.current;s.elapsed+=dt;
    if(s.phase==='door'&&s.elapsed>=doorWalkMs/1000){reset();props.current.onEnterRoom();}
    else if(s.phase==='reacting'&&s.elapsed>1.3){m.current=resting();props.current.onBusy(false);}
@@ -164,9 +177,14 @@ export function Room(p:Props){
    else if(s.phase==='walking'){
     const step=95*dt;if(Math.abs(s.x)<=step){m.current=resting();props.current.onBusy(false);}else s.x-=Math.sign(s.x)*step;
    }
-   if(s.phase!=='idle'||motionPhase.current!=='idle'){setMotion({...m.current});motionPhase.current=m.current.phase;}
-   raf.current=requestAnimationFrame(frame);
+   paintMotion();
+   if(m.current.phase!==motion.phase||m.current.direction!==motion.direction)setMotion({...m.current});
+   if(m.current.phase!=='idle'&&!document.hidden)raf.current=requestAnimationFrame(frame);
+   else raf.current=0;
   };raf.current=requestAnimationFrame(frame);
+  return()=>{cancelAnimationFrame(raf.current);raf.current=0;};
+ },[motion.phase,motion.direction,p.active]);
+ useEffect(()=>{
   const cancel=()=>reset();window.addEventListener('blur',cancel);const visibility=()=>{if(document.hidden)reset();};document.addEventListener('visibilitychange',visibility);
   const resize=new ResizeObserver(()=>{
    if(m.current.phase!=='idle')reset();
@@ -174,7 +192,7 @@ export function Room(p:Props){
   });if(stage.current)resize.observe(stage.current);
   return()=>{cancelAnimationFrame(raf.current);clearTimeout(hold.current);window.removeEventListener('blur',cancel);document.removeEventListener('visibilitychange',visibility);resize.disconnect();};
  },[]);
- const motionPhase=useRef<Phase>('idle');
+
  useEffect(()=>{if(p.sleeping||p.game.roomAction||p.game.restUntil!==null||p.state==='faint')reset();},[p.sleeping,p.state,p.game.roomAction?.id,p.game.restUntil]);
  useEffect(()=>{if(p.game.roomAction)select(activityLocation(p.game.roomAction),true);},[p.game.roomAction?.id]);
 
@@ -222,7 +240,7 @@ export function Room(p:Props){
  useEffect(()=>{
   if(!bathAction||!p.active||location!=='bathroom')return;
   const foam=new Image();
-  foam.src='/assets/bath-foam-room.png';
+  foam.src='/assets/bath-foam-room.webp';
   const timer=window.setTimeout(()=>setBathArrived(bathAction.id),Math.max(0,bathAction.started+BATH_READY_AT-Date.now()));
   return()=>window.clearTimeout(timer);
  },[bathAction,p.active,location]);
@@ -277,16 +295,18 @@ export function Room(p:Props){
  } as CSSProperties:walkStyle;
  const busy=motion.phase!=='idle';
  const trackMessOverlap=busy||sceneWalking||Boolean(activeAction);
+ const messTargets=useRef<HTMLButtonElement[]>([]);
  const messIds=dogMesses.map(mess=>mess.at).join(',');
  useLayoutEffect(()=>{
   const layer=floorMesses.current,mascot=actor.current?.querySelector('.mascot');
   if(!p.active||!hasMesses||!layer||!mascot)return;
+  messTargets.current=Array.from(layer.querySelectorAll('button'));
   let frame=0;
   function update(){
    const body=mascot!.getBoundingClientRect();
    const bodyInset=body.width*.18;
    const visible=getComputedStyle(mascot!).visibility==='visible';
-   const covered=Array.from(layer!.querySelectorAll('button'),button=>{
+   const covered=messTargets.current.map(button=>{
     const mark=button.getBoundingClientRect();
     return {button,hide:visible&&!button.classList.contains('scrubbing')&&
      mark.right+10>body.left+bodyInset&&mark.left-10<body.right-bodyInset&&
@@ -310,8 +330,9 @@ export function Room(p:Props){
  }
  const phaseText={idle:actionKind?activities[actionKind].name+'…':p.speech,dragging:'А-а-а! Осторожнее! 😳',falling:'Ой, падаю!',landed:'Упс… Я в порядке!', 'getting-up':'Сейчас, сейчас… встаю!',walking:'Топ-топ… обратно в центр',reacting:reactions[hit].text,door:'Идёт в комнату'}[motion.phase];
  function select(id:Location,force=false){if(!force&&(p.game.roomAction||m.current.phase==='door'||sleepWalking))return;reset();p.onLocationChange(id);}
- return <><section ref={stage} className={'room photo-room '+(!sceneWalking&&p.playTray?' choosing-play':'')+(sceneWalking?' scene-walk':'')+(sleepWalking?' sleep-walk':'')+(asleep?' sleeping-in-bed':'')+(bathSoaking?' bath-phase-soak':'')+(toiletPhase?' toilet-phase-'+toiletPhase:'')+(actionKind==='computer'&&!approaching?' computer-playing':'')+(actionKind==='ball'?' ball-playing':'')+(yogaAction?' yoga-active':'')} style={roomStyle} aria-label="Комната Петрашки" data-location={location} data-lighting={roomLighting(updated)} data-dumbbells={dumbbellPhase??undefined} onAnimationStart={stepSound} onAnimationIteration={stepSound}>
- <RoomObjects game={p.game} location={location} onActivity={p.onActivity} onSleep={()=>p.onCare('sleep')} onWake={p.onWake} onMove={p.onMove} onDoor={walkToDoor} doorDisabled={busy} holdingDumbbells={holdingDumbbells}/>
+ return <><section ref={stage} className={'room photo-room '+(sceneWalking?' scene-walk':'')+(sleepWalking?' sleep-walk':'')+(asleep?' sleeping-in-bed':'')+(bathSoaking?' bath-phase-soak':'')+(toiletPhase?' toilet-phase-'+toiletPhase:'')+(actionKind==='computer'&&!approaching?' computer-playing':'')+(actionKind==='ball'?' ball-playing':'')+(yogaAction?' yoga-active':'')} style={roomStyle} aria-label="Комната Петрашки" data-location={location} data-lighting={roomLighting(p.wallTime)} data-dumbbells={dumbbellPhase??undefined} onAnimationStart={stepSound} onAnimationIteration={stepSound}>
+ <RoomObjects speakerPlaying={speaker.playing} onSpeaker={speaker.toggle} game={p.game} location={location} onActivity={p.onActivity} onSleep={()=>p.onCare('sleep')} onWake={p.onWake} onMove={p.onMove} onDoor={walkToDoor} doorDisabled={busy} holdingDumbbells={holdingDumbbells}/>
+ {speaker.error&&location==='hall'&&<p className="speaker-error" role="status">{speaker.error}</p>}
  <div className="location-photo pixel-location" role="img" aria-label={locationLabels[location]}/>
  {location==='room'&&<RoomWindow/>}
  {location==='hall'&&<HallWindow/>}
@@ -334,6 +355,7 @@ export function Room(p:Props){
   <span role="timer" aria-label="До конца посещения туалета">{Math.floor(secondsLeft/60)}:{String(secondsLeft%60).padStart(2,'0')}</span>
   <button type="button" className="cancel-activity" onClick={p.onCancelActivity}>Отменить</button>
  </div>}
+ {(location==='bathroom'||location==='hallway')&&<CeilingLampOff/>}
  <button className="sound-toggle" aria-label={muted?'Включить звук':'Выключить звук'} onClick={()=>{setMuted(!muted);muteSound(!muted);if(!muted)stopHitSound();else unlockSound();}}>{muted?'🔇':'🔊'}</button>
  {p.statHud}
  {hasMesses&&<div ref={floorMesses} className="floor-messes">{messPositions.map(point=>{
@@ -347,8 +369,8 @@ export function Room(p:Props){
    {mess?.kind==='pee'?<PixelPuddle/>:<PixelPoop/>}{isScrubbing&&<><i/><i/></>}
   </button>;
  })}</div>}
- <div className="floor-shadow" aria-hidden="true" style={{transform:toiletOnFloor?undefined:`translate(calc(-50% + ${motion.x+(actionKind==='ball'||actionKind==='dumbbells'?activityOffset:0)}px),${actionKind==='dumbbells'?activityY:0}px) scale(${Math.max(.45,1+motion.y/400)})`,opacity:Math.max(.15,.55+motion.y/500)}}/>
- <div ref={actor} className={'actor-position motion-'+motion.phase+(actionKind?' activity-'+actionKind:'')+(p.sleeping?' activity-sleep':'')+(p.state==='faint'?' is-dead':'')} style={{'--x':`${motion.x+activityOffset}px`,'--y':`${motion.y+activityY}px`,'--tilt':`${motion.tilt}deg`,'--direction':motion.direction,'--clean-facing':cleanFacing,'--hit-x':`${(reactions[hit].cell%3)*50}%`,'--hit-y':`${Math.floor(reactions[hit].cell/3)*50}%`} as CSSProperties}>
+ <div className="floor-shadow" aria-hidden="true" style={{transform:toiletOnFloor?undefined:`translate(calc(-50% + var(--motion-x,0px) + ${actionKind==='ball'||actionKind==='dumbbells'?activityOffset:0}px),${actionKind==='dumbbells'?activityY:0}px) scale(var(--shadow-scale,1))`,opacity:'var(--shadow-opacity,.55)'}}/>
+ <div ref={actor} className={'actor-position motion-'+motion.phase+(actionKind?' activity-'+actionKind:'')+(p.sleeping?' activity-sleep':'')+(p.state==='faint'?' is-dead':'')} style={{'--x':`calc(var(--motion-x,0px) + ${activityOffset}px)`,'--y':`calc(var(--motion-y,0px) + ${activityY}px)`,'--tilt':'var(--motion-tilt,0deg)','--direction':motion.direction,'--clean-facing':cleanFacing,'--hit-x':`${(reactions[hit].cell%3)*50}%`,'--hit-y':`${Math.floor(reactions[hit].cell/3)*50}%`} as CSSProperties}>
  {showActivity&&!bathAction&&!toiletPhase&&<div className={`actor-activity${training?' training-cancel':''}`}>
   {!training&&<><strong>{statusLabel}</strong>
   {activeAction?.kind==='ball'

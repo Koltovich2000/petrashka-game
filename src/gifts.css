@@ -2,7 +2,7 @@
  --shelf-lip:linear-gradient(#ffae5d,#ba572c 29%,#733326 66%,#3a1925);
  max-width:760px;margin-inline:auto;padding:14px clamp(7px,3vw,30px) 18px;
  border:1px solid #454c73;border-radius:22px;
- background:linear-gradient(#131c40f0 8%,#171d3866 68%,#1b1321a0),url('/assets/bedroom-navy.png') center bottom/cover;
+ background:linear-gradient(#131c40f0 8%,#171d3866 68%,#1b1321a0),url('/assets/bedroom-navy.webp') center bottom/cover;
 }
 .gifts-header{max-width:610px;margin:0 auto 15px;display:flex;gap:12px;align-items:center;justify-content:space-between}
 .gifts-header h1{display:flex;align-items:center;gap:8px;margin:0;font-size:clamp(24px,5vw,36px);line-height:1}

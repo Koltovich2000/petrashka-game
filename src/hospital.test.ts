@@ -83,11 +83,11 @@ test('a long absence only checks the first 12 hours for admission',()=>{
  const fundedPlayer=funded(5_000);
  const healthy=advance(fundedPlayer,96*hour,true);
  assert.deepEqual([healthy.health,healthy.food,healthy.energy,healthy.hospital,healthy.economy.balance],[100,46,46,null,5_000]);
- const exhausted={...fundedPlayer,health:28,food:0,energy:0};
+ const exhausted={...fundedPlayer,health:38,food:0,energy:0};
  const returning=advance(exhausted,96*hour,true);
  assert.deepEqual([returning.health,returning.hospital,returning.updated],[8,null,96*hour]);
  assert.ok(advance(exhausted,96*hour).hospital);
- const critical={...exhausted,health:20};
+ const critical={...exhausted,health:30};
  const hospitalized=advance(critical,96*hour,true);
  assert.equal(hospitalized.hospital?.startedAt,12*hour);
  assert.equal(hospitalized.hospital?.billedHours,84);

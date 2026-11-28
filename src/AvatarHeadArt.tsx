@@ -35,7 +35,7 @@ export function AvatarHeadArt({expression=0,range=false,wetness=0,...svg}:HeadPr
  const size=range?724:627;
  const width=range?2172:1254,height=range?724:1254;
  const x=-(range?expression:expression%2)*size,y=range?0:-Math.floor(expression/2)*size;
- const href=range?'/assets/range-emotions.png':'/assets/pixel-heads.png';
+ const href=range?'/assets/range-emotions.webp':'/assets/pixel-heads.webp';
  const sprite=<image href={href} x={x} y={y} width={width} height={height}/>;
  return <svg {...svg} viewBox={`0 0 ${size} ${size}`} overflow="hidden" data-hair-wetness={wetness}>
   {sprite}
@@ -49,5 +49,5 @@ export function AvatarHeadArt({expression=0,range=false,wetness=0,...svg}:HeadPr
 }
 
 export function ComputerHair({wetness}:{wetness:HairWetness}){
- return <HairTint path={profileHair} wetness={wetness}><image href="/assets/computer-profile.png" width="1148" height="1370"/></HairTint>;
+ return <HairTint path={profileHair} wetness={wetness}><image href="/assets/computer-profile.webp" width="1148" height="1370"/></HairTint>;
 }

@@ -4,10 +4,10 @@ import {useRef,useState,type PointerEvent,type CSSProperties} from 'react';
 import {FurnitureArt} from './FurnitureArt';
 import {activityReason,furnitureCatalog,placement,type ActivityKind,type FurnitureId,type Location} from './activities';
 import {blocked,type Game} from './game';
-interface Props{game:Game;location:Location;onActivity:(a:ActivityKind)=>void;onSleep:()=>void;onWake:()=>void;onMove:(id:FurnitureId,x:number,y:number)=>void;onDoor:()=>void;doorDisabled:boolean;holdingDumbbells:boolean}
+interface Props{speakerPlaying:boolean;onSpeaker:()=>void;game:Game;location:Location;onActivity:(a:ActivityKind)=>void;onSleep:()=>void;onWake:()=>void;onMove:(id:FurnitureId,x:number,y:number)=>void;onDoor:()=>void;doorDisabled:boolean;holdingDumbbells:boolean}
 type Point={x:number;y:number};
 type DragOrigin={id:FurnitureId;point:Point;clientX:number;clientY:number;width:number;height:number};
-export function RoomObjects({game,location,onActivity,onSleep,onWake,onMove,onDoor,doorDisabled,holdingDumbbells}:Props){
+export function RoomObjects({speakerPlaying,onSpeaker,game,location,onActivity,onSleep,onWake,onMove,onDoor,doorDisabled,holdingDumbbells}:Props){
  const [arrange,setArrange]=useState(false),[drag,setDrag]=useState<(Point&{id:FurnitureId})|null>(null);
  const origin=useRef<DragOrigin|null>(null);
  const busy=Boolean(game.roomAction||game.restUntil!==null||game.sleepUntil!==null);
@@ -32,12 +32,13 @@ export function RoomObjects({game,location,onActivity,onSleep,onWake,onMove,onDo
   const decor='art' in item;
   const style:CSSProperties={left:point.x*100+'%',top:point.y*100+'%',width:decor?item.width+'%':undefined};
   const art=<FurnitureArt kind={item.id}/>;
-  if(decor&&!arranging)return <div key={item.id} className="apartment-decor" style={style} data-decor={item.id} data-dog-obstacle={item.floor||undefined} aria-hidden="true">{art}</div>;
-  return <button key={item.id} type="button" className={(decor?'apartment-decor':'placed-furniture')+(arranging?' arranging':'')}
+  const speaker=item.id==='hallSpeaker';
+  if(decor&&!arranging&&!speaker)return <div key={item.id} className="apartment-decor" style={style} data-decor={item.id} data-dog-obstacle={item.floor||undefined} aria-hidden="true">{art}</div>;
+  return <button key={item.id} type="button" className={(decor?'apartment-decor':'placed-furniture')+(arranging?' arranging':'')+(speaker?' room-speaker':'')}
    data-decor={decor?item.id:undefined} data-dog-obstacle={decor&&item.floor||undefined} data-furniture={decor?undefined:item.id}
-   aria-label={item.name} disabled={busy||game.health===0} style={style}
+   aria-label={speaker&&!arranging?(speakerPlaying?'Выключить колонку':'Включить колонку'):item.name} aria-pressed={speaker?speakerPlaying:undefined} disabled={(!speaker&&busy)||game.health===0} style={style}
    title={arranging?'Перетащите предмет':decor?item.name:activityReason(game,item.id)||item.name}
-   onClick={()=>{if(!arranging&&!decor)onActivity(item.id);}}
+   onClick={()=>{if(arranging)return;if(speaker)onSpeaker();else if(!decor)onActivity(item.id);}}
    onPointerDown={event=>{
     if(!arranging||origin.current)return;
     const room=event.currentTarget.closest('.photo-room')!.getBoundingClientRect();

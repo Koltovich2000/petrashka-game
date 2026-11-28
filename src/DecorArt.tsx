@@ -1,7 +1,7 @@
 import type {DecorArtName} from './decor';
 
 const sizes:Record<DecorArtName,string>={
- plant:'0 0 46 64',rug:'0 0 100 35',picture:'0 0 54 62',sofa:'0 0 102 63',
+ speaker:'0 0 64 96',plant:'0 0 46 64',rug:'0 0 100 35',picture:'0 0 54 62',sofa:'0 0 102 63',
  kitchen:'0 0 116 100',lamp:'0 0 45 80',bookshelf:'0 0 60 65',vanity:'0 0 70 84',towels:'0 0 78 35',
  curtains:'0 0 144 128',sconces:'0 0 108 30',
 };
@@ -10,6 +10,19 @@ export function DecorArt({kind}:{kind:DecorArtName}){
  return <svg viewBox={sizes[kind]} shapeRendering="crispEdges" aria-hidden="true" className="furniture-art"
   data-decor-art={kind} preserveAspectRatio={kind==='curtains'?'none':undefined}>
   <g stroke="#2b1d35" strokeWidth="2" strokeLinejoin="miter">
+   {kind==='speaker'&&<>
+    <path d="M11 10 17 5H49L54 11V89L49 93H11Z" fill="#151a2e" strokeWidth="3"/>
+    <path d="M12 12H49V87H12Z" fill="#313756"/>
+    <path d="M17 17H44V22H17Z" fill="#a27be9"/>
+    <path d="M19 28H42L47 33V48L42 53H19L14 48V33Z" fill="#14192c"/>
+    <path d="M24 32H37L42 37V44L37 49H24L19 44V37Z" fill="#75649d"/>
+    <path d="M27 36H34L37 39V43L34 46H27L24 43V39Z" fill="#c3a5ea"/>
+    <path className="speaker-woofer" d="M20 57H41L48 64V78L41 85H20L13 78V64Z" fill="#14192c"/>
+    <path d="M24 62H37L43 68V74L37 80H24L18 74V68Z" fill="#76649f"/>
+    <path d="M27 67H34L38 71 34 76H27L23 71Z" fill="#c5aceb"/>
+    <path d="M51 13V85M16 89H23M38 89H46" stroke="#080d1e"/>
+    <path className="speaker-led" d="M39 18H43V21H39Z" fill="#ffc969" stroke="none"/>
+   </>}
    {kind==='plant'&&<>
     <path d="M22 51V17M22 26L11 14M23 32L35 17M21 39L10 32M23 43L35 36" stroke="#326344" strokeWidth="3" fill="none"/>
     <path d="M22 25L16 18 17 10 24 3 28 7 28 16ZM16 28L7 25 3 18 4 12 12 13 18 18ZM27 32L28 21 34 14 43 14 42 21 34 28ZM18 42L7 41 2 34 4 29 12 31 16 35ZM27 43L31 35 40 31 45 34 42 40 36 44Z" fill="#74a542"/>

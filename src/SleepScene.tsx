@@ -15,7 +15,7 @@ export function SleepScene({outfit,wetness}:{outfit:Outfit;wetness:HairWetness})
    </svg>
   </g>
   <g clipPath={`url(#${duvet})`}>
-   <image className="sleep-blanket" href="/assets/bedroom-navy.png" width="640" height="585" preserveAspectRatio="none"/>
+   <image className="sleep-blanket" href="/assets/bedroom-navy.webp" width="640" height="585" preserveAspectRatio="none"/>
   </g>
   <g className="sleep-cloud" transform="translate(60 174)" aria-hidden="true">
    <path d="M9 16H15V10H25V5H42V9H51V14H57V23H62V35H57V42H50V47H39V51H24V47H14V42H7V35H3V25H9Z M6 51H12V57H6Z M0 61H4V65H0Z"
